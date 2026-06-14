@@ -1,73 +1,89 @@
 ﻿using Artisan.GameInterop;
 using ECommons.DalamudServices;
 using ECommons.ImGuiMethods;
-using Dalamud.Bindings.ImGui;
+using ImGuiNET;
 using System.Linq;
 using System.Numerics;
-using Artisan.UI.Tables;
-using ECommons;
-using Artisan.CraftingLogic.Solvers;
-using Dalamud.Interface.Utility.Raii;
-using System;
 
 namespace Artisan.UI
 {
-    internal class RaphaelCacheUI
+    internal static class RaphaelCacheUI
     {
-        public RaphaelCacheTable? Table;
-
-        internal void Draw()
+        private static string _search = string.Empty;
+        private static bool _oldVersion = false;
+        internal static void Draw()
         {
-            try
+            ImGui.TextWrapped("This tab will allow you to view macros in the Raphael integration cache.");
+            ImGui.Separator();
+
+            if (Svc.ClientState.IsLoggedIn && Crafting.CurState is not Crafting.State.IdleNormal and not Crafting.State.IdleBetween)
             {
-                ImGui.TextWrapped("This tab shows all of the currently saved Raphael-generated macros for the currently logged in character.");
-
-                if (Svc.ClientState.IsLoggedIn && Crafting.CurState is not Crafting.State.IdleNormal and not Crafting.State.IdleBetween)
-                {
-                    ImGui.Text($"Crafting in progress. Macro settings will be unavailable until you stop crafting.");
-                    return;
-                }
-                ImGui.Spacing();
-
-                ImGui.TextWrapped($"Currently saved macros: {RaphaelCache.CurrentCache.Keys.Count}");
-                ImGui.Spacing();
-
-                using (ImRaii.Child("##selector", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y - 32f.Scale()), true))
-                {
-                    // todo: search by recipe?
-                    if (Table == null)
-                    {
-                        var cacheList = RaphaelCache.CurrentCache.Keys.ToList();
-                        Table = new(cacheList);
-                    }
-                    Table.Draw(ImGui.GetTextLineHeightWithSpacing() - 4f);
-                }
-
-                var filterActive = Table.FilteredItems.Count != 0 && Table.FilteredItems.Count != RaphaelCache.CurrentCache.Keys.Count;
-                var filterCount = filterActive ? $"{Table.FilteredItems.Count} " : "";
-
-                if (!filterActive) ImGui.BeginDisabled();
-                if (ImGuiEx.ButtonCtrl($"Delete {filterCount}Filtered Macro{(Table.FilteredItems.Count == 1 ? "" : "s")}", new Vector2(ImGui.GetContentRegionAvail().X / 2, ImGui.GetContentRegionAvail().Y)))
-                {
-                    var toDelete = Table.FilteredItems.JSONClone();
-                    foreach ((RaphaelOptions key, int _) in toDelete)
-                    {
-                        RaphaelCache.CurrentCache.TryRemove(key, out _);
-                    }
-                    Table.FilteredItems.Clear();
-                    P.Config.Save();
-                }
-                if (!filterActive) ImGui.EndDisabled();
-
-                ImGui.SameLine();
-
-                if (ImGuiEx.ButtonCtrl($"Delete Entire Cache", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y)))
-                {
-                    RaphaelCache.CurrentCache.Clear();
-                    P.Config.Save();
-                }
+                ImGui.Text($"Crafting in progress. Macro settings will be unavailable until you stop crafting.");
+                return;
             }
-            catch (Exception ex) { ex.Log(); }
+            ImGui.Spacing();
+
+            if (ImGui.RadioButton("Old Cache (not in use)", _oldVersion))
+                _oldVersion = true;
+            ImGui.SameLine();
+            if (ImGui.RadioButton("New Cache", !_oldVersion))
+                _oldVersion = false;
+
+            ImGui.InputText($"Search", ref _search, 300);
+
+            if (!_oldVersion)
+            {
+
+                if (ImGui.BeginChild("##selector", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y - 32f.Scale()), true))
+                {
+                    ImGuiEx.TextUnderlined($"Level/Progress/Quality/Durability-Craftsmanship/Control/CP-Type/Initial Quality");
+                    foreach (var key in P.Config.RaphaelSolverCacheV3.Keys)
+                    {
+                        var m = P.Config.RaphaelSolverCacheV3[key];
+                        if (!m.Name.Contains(_search, System.StringComparison.CurrentCultureIgnoreCase)) continue;
+                        var selected = ImGui.Selectable($"{m.Name}###{m.ID}");
+
+                        if (selected && !P.ws.Windows.Any(x => x.WindowName.Contains(m.ID.ToString())))
+                        {
+                            new MacroEditor(m, true);
+                        }
+                    }
+
+                }
+                ImGui.EndChild();
+
+            }
+            else
+            {
+
+                if (ImGui.BeginChild("##selector", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y - 32f.Scale()), true))
+                {
+                    ImGuiEx.TextUnderlined($"Level/Progress/Quality/Durability-Craftsmanship/Control/CP-Type");
+                    foreach (var key in P.Config.RaphaelSolverCacheV2.Keys)
+                    {
+                        var m = P.Config.RaphaelSolverCacheV2[key];
+                        if (!m.Name.Contains(_search, System.StringComparison.CurrentCultureIgnoreCase)) continue;
+                        var selected = ImGui.Selectable($"{m.Name}###{m.ID}");
+
+                        if (selected && !P.ws.Windows.Any(x => x.WindowName.Contains(m.ID.ToString())))
+                        {
+                            new MacroEditor(m, true);
+                        }
+                    }
+
+                }
+                ImGui.EndChild();
+
+            }
+
+            if (ImGui.Button("Clear This Raphael Cache (Hold Ctrl)", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y)) && ImGui.GetIO().KeyCtrl)
+            {
+                if (_oldVersion)
+                    P.Config.RaphaelSolverCacheV2.Clear();
+                else
+                    P.Config.RaphaelSolverCacheV3.Clear();
+                P.Config.Save();
+            }
         }
     }
 }

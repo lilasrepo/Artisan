@@ -3,11 +3,11 @@ using Artisan.CraftingLogic.Solvers;
 using Artisan.GameInterop;
 using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
-using Dalamud.Bindings.ImGui;
 using ECommons;
 using ECommons.DalamudServices;
 using ECommons.ImGuiMethods;
 using ECommons.Logging;
+using ImGuiNET;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -23,6 +23,11 @@ namespace Artisan.UI
         private static bool _keyboardFocus;
         private const string MacroNamePopupLabel = "Macro Name";
         private static bool reorderMode = false;
+        private static MacroSolverSettings.Macro? selectedAssignMacro;
+
+        private static int quickAssignLevel = 1;
+        private static int quickAssignDifficulty = 9;
+        private static int quickAssignQuality = 80;
 
         private static List<int> quickAssignPossibleDifficulties = new();
         private static int quickAssignMaxDifficulty => quickAssignPossibleDifficulties.LastOrDefault();
@@ -34,90 +39,91 @@ namespace Artisan.UI
 
         private static bool[] quickAssignJobs = new bool[8];
         private static Dictionary<int, bool> quickAssignDurabilities = new();
+        private static bool quickAssignCannotHQ = false;
 
         internal static void Draw()
         {
-            try
+            ImGui.TextWrapped("This tab will allow you to add macros that Artisan can use instead of its own decisions. Once you create a new macro, click on it from the list below to open up the macro editor window for your macro.");
+            ImGui.Separator();
+
+            if (Svc.ClientState.IsLoggedIn && Crafting.CurState is not Crafting.State.IdleNormal and not Crafting.State.IdleBetween)
             {
-                ImGui.TextWrapped("This tab will allow you to add macros that Artisan can use instead of its own decisions. Once you create a new macro, click on it from the list below to open up the macro editor window for your macro.");
-                ImGui.Separator();
+                ImGui.Text($"Crafting in progress. Macro settings will be unavailable until you stop crafting.");
+                return;
+            }
+            ImGui.Spacing();
+            if (ImGui.Button("Import Macro From Clipboard"))
+                OpenMacroNamePopup(MacroNameUse.FromClipboard);
 
-                if (Svc.ClientState.IsLoggedIn && Crafting.CurState is not Crafting.State.IdleNormal and not Crafting.State.IdleBetween)
+            if (ImGui.Button("Import Macro From Clipboard (Artisan Export)"))
+            {
+                try
                 {
-                    ImGui.Text($"Crafting in progress. Macro settings will be unavailable until you stop crafting.");
-                    return;
-                }
-                ImGui.Spacing();
-                if (ImGui.Button("Import Macro From Clipboard"))
-                    OpenMacroNamePopup(MacroNameUse.FromClipboard);
-
-                if (ImGui.Button("Import Macro From Clipboard (Artisan Export)"))
-                {
-                    try
+                    var import = JsonConvert.DeserializeObject<MacroSolverSettings.Macro>(ImGui.GetClipboardText());
+                    if (import != null)
                     {
-                        var import = JsonConvert.DeserializeObject<MacroSolverSettings.Macro>(ImGui.GetClipboardText());
-                        if (import != null)
-                        {
-                            P.Config.MacroSolverConfig.AddNewMacro(import);
-                            P.Config.Save();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        ex.Log();
-                        Notify.Error("Unable to import.");
+                        P.Config.MacroSolverConfig.AddNewMacro(import);
+                        P.Config.Save();
                     }
                 }
-
-                if (ImGui.Button("New Macro"))
-                    OpenMacroNamePopup(MacroNameUse.NewMacro);
-
-                DrawMacroNamePopup(MacroNameUse.FromClipboard);
-                DrawMacroNamePopup(MacroNameUse.NewMacro);
-
-                if (P.Config.MacroSolverConfig.Macros.Count > 0)
+                catch (Exception ex)
                 {
-                    if (P.Config.MacroSolverConfig.Macros.Count > 1)
-                        ImGui.Checkbox("Reorder Mode (Click and Drag to Reorder)", ref reorderMode);
-                    else
-                        reorderMode = false;
-
-                    if (reorderMode)
-                        ImGuiEx.CenterColumnText("Reorder Mode");
-                    else
-                        ImGuiEx.CenterColumnText("Macro Editor Select");
-
-                    if (ImGui.BeginChild("##selector", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y), true))
-                    {
-                        for (int i = 0; i < P.Config.MacroSolverConfig.Macros.Count; i++)
-                        {
-                            var m = P.Config.MacroSolverConfig.Macros[i];
-                            int cpCost = GetCPCost(m);
-                            var selected = ImGui.Selectable($"{m.Name} (CP Cost: {cpCost}) (ID: {m.ID})###{m.ID}");
-
-                            if (ImGui.IsItemActive() && !ImGui.IsItemHovered() && reorderMode)
-                            {
-                                int i_next = i + (ImGui.GetMouseDragDelta(ImGuiMouseButton.Left).Y < 0f ? -1 : 1);
-                                if (i_next >= 0 && i_next < P.Config.MacroSolverConfig.Macros.Count)
-                                {
-                                    P.Config.MacroSolverConfig.Macros[i] = P.Config.MacroSolverConfig.Macros[i_next];
-                                    P.Config.MacroSolverConfig.Macros[i_next] = m;
-                                    P.Config.Save();
-                                    ImGui.ResetMouseDragDelta();
-                                }
-                            }
-
-                            if (selected && !reorderMode && !P.ws.Windows.Any(x => x.WindowName.Contains(m.ID.ToString())))
-                            {
-                                new MacroEditor(m);
-                            }
-                        }
-
-                    }
-                    ImGui.EndChild();
+                    ex.Log();
+                    Notify.Error("Unable to import.");
                 }
             }
-            catch { }
+
+            if (ImGui.Button("New Macro"))
+                OpenMacroNamePopup(MacroNameUse.NewMacro);
+
+            DrawMacroNamePopup(MacroNameUse.FromClipboard);
+            DrawMacroNamePopup(MacroNameUse.NewMacro);
+
+            if (P.Config.MacroSolverConfig.Macros.Count > 0)
+            {
+                if (P.Config.MacroSolverConfig.Macros.Count > 1)
+                    ImGui.Checkbox("Reorder Mode (Click and Drag to Reorder)", ref reorderMode);
+                else
+                    reorderMode = false;
+
+                if (reorderMode)
+                    ImGuiEx.CenterColumnText("Reorder Mode");
+                else
+                    ImGuiEx.CenterColumnText("Macro Editor Select");
+
+                if (ImGui.BeginChild("##selector", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y), true))
+                {
+                    for (int i = 0; i < P.Config.MacroSolverConfig.Macros.Count; i++)
+                    {
+                        var m = P.Config.MacroSolverConfig.Macros[i];
+                        int cpCost = GetCPCost(m);
+                        var selected = ImGui.Selectable($"{m.Name} (CP Cost: {cpCost}) (ID: {m.ID})###{m.ID}");
+
+                        if (ImGui.IsItemActive() && !ImGui.IsItemHovered() && reorderMode)
+                        {
+                            int i_next = i + (ImGui.GetMouseDragDelta(0).Y < 0f ? -1 : 1);
+                            if (i_next >= 0 && i_next < P.Config.MacroSolverConfig.Macros.Count)
+                            {
+                                P.Config.MacroSolverConfig.Macros[i] = P.Config.MacroSolverConfig.Macros[i_next];
+                                P.Config.MacroSolverConfig.Macros[i_next] = m;
+                                P.Config.Save();
+                                ImGui.ResetMouseDragDelta();
+                            }
+                        }
+
+                        if (selected && !reorderMode && !P.ws.Windows.Any(x => x.WindowName.Contains(m.ID.ToString())))
+                        {
+                            new MacroEditor(m);
+                        }
+                    }
+
+                }
+                ImGui.EndChild();
+            }
+            else
+            {
+                selectedAssignMacro = null;
+            }
         }
 
         public static int GetCPCost(MacroSolverSettings.Macro m)
@@ -305,7 +311,7 @@ namespace Artisan.UI
             ImGui.OpenPopup($"{MacroNamePopupLabel}{use}");
         }
 
-        internal static List<MacroSolverSettings.MacroStep> ParseMacro(IEnumerable<int> skillIds, CraftState craft)
+        internal static List<MacroSolverSettings.MacroStep> ParseMacro(IEnumerable<int> skillIds)
         {
             var res = new List<MacroSolverSettings.MacroStep>();
             if (skillIds.Count() == 0)
@@ -313,34 +319,10 @@ namespace Artisan.UI
                 return res;
             }
 
-            var dura = craft.CraftDurability;
-            var step = Simulator.CreateInitial(craft, 0);
-            for (int i = 0; i < skillIds.Count(); i++)
+            foreach (var item in skillIds)
             {
-                var secondPrevAct = (Skills)skillIds.ElementAtOrDefault(i - 2);
-                var prevAct = (Skills)skillIds.ElementAtOrDefault(i - 1);
-                var act = (Skills)skillIds.ElementAt(i);
-                var nextAct = (Skills)skillIds.ElementAtOrDefault(i + 1);
-
-                var nextStep = Simulator.Execute(craft, step, act, 0, 1);
-
+                var act  = (Skills)item;
                 res.Add(new() { Action = act });
-
-                if (act == Skills.GreatStrides && nextAct == Skills.ByregotsBlessing && step.Durability > 10)
-                {
-                    res[i].ExcludeExcellent = true;
-                    res[i].ReplacementAction = Skills.ByregotsBlessing;
-                    res[i].ReplaceOnExclude = true;
-                }
-
-                if (i > 0 && res[i - 1].ExcludeExcellent && act == Skills.ByregotsBlessing)
-                {
-                    res[i].ExcludePoor = true;
-                    res[i].ReplacementAction = Skills.Observe;
-                    res[i].ReplaceOnExclude = true;
-                }
-
-                step = nextStep.Item2;
             }
 
             return res;

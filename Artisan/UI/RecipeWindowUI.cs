@@ -1,11 +1,14 @@
-using Artisan.Autocraft;
+﻿using Artisan.Autocraft;
 using Artisan.CraftingLists;
+using Artisan.CraftingLogic;
+using Artisan.CraftingLogic.Solvers;
 using Artisan.FCWorkshops;
 using Artisan.GameInterop;
+using Artisan.IPC;
 using Artisan.RawInformation;
-using Artisan.RawInformation.Character;
 using Artisan.UI;
-using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using ECommons;
@@ -14,15 +17,17 @@ using ECommons.ExcelServices;
 using ECommons.ImGuiMethods;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using ImGuiNET;
 using Lumina.Excel.Sheets;
-using OtterGui.Extensions;
+using OtterGui;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using TerraFX.Interop.Windows;
 using static ECommons.GenericHelpers;
 
 namespace Artisan
@@ -31,9 +36,6 @@ namespace Artisan
     {
         private static string search = string.Empty;
         private static bool searched = false;
-        private static CraftMenuWindowUI? _craftMenuWindowUi = null;
-        private static CraftMenuWindowUI? _cosmicCraftMenuWindowUi = null;
-
         internal static string Search
         {
             get => search;
@@ -46,16 +48,15 @@ namespace Artisan
                 }
             }
         }
-
-        private RecipeWindowUI() : base("###RecipeWindow", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoNavInputs | ImGuiWindowFlags.NoNavFocus | ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoFocusOnAppearing)
+        public RecipeWindowUI() : base($"###RecipeWindow", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoNavInputs | ImGuiWindowFlags.NoNavFocus | ImGuiWindowFlags.NoBackground | ImGuiWindowFlags.NoFocusOnAppearing)
         {
-            Size = new Vector2(0, 0);
-            Position = new Vector2(0, 0);
+            this.Size = new Vector2(0, 0);
+            this.Position = new Vector2(0, 0);
             IsOpen = true;
             ShowCloseButton = false;
             RespectCloseHotkey = false;
             DisableWindowSounds = true;
-            SizeConstraints = new WindowSizeConstraints()
+            this.SizeConstraints = new WindowSizeConstraints()
             {
                 MaximumSize = new Vector2(0, 0),
             };
@@ -63,141 +64,22 @@ namespace Artisan
 
         public override void Draw()
         {
-            try
-            {
-                if (Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas])
-                {
-                    HideCraftingMenuWindow(reset: true);
-                    HideCosmicCraftingMenuWindow(reset: true);
-                }
+            if (Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.BetweenAreas]) return;
 
-                if (!Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Crafting] || Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.PreparingToCraft])
-                {
-                    DrawOptions();
-                }
-                else
-                {
-                    HideCraftingMenuWindow(reset: true);
-                    HideCosmicCraftingMenuWindow(reset: true);
-                }
+            if (!Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Crafting] || Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.PreparingToCraft])
+                DrawOptions();
 
-                DrawSearchReplace();
+            DrawSearchReplace();
 
-                if (!P.Config.UseNativeButtons)
-                {
-                    DrawEnduranceCounter();
-                    DrawCosmicEnduranceCounter();
-                }
+            DrawEnduranceCounter();
+            DrawCosmicEnduranceCounter();
 
-                DrawWorkshopOverlay();
+            DrawWorkshopOverlay();
 
-                DrawSupplyMissionOverlay();
+            DrawSupplyMissionOverlay();
 
-                DrawMacroOptions();
-                DrawCosmicWindowOptions();
-
-                DrawRecipeCompletion();
-            }
-            catch { }
-        }
-
-        private unsafe void DrawRecipeCompletion()
-        {
-            var curPage = AgentRecipeNote.Instance()->SelectedRecipeCategoryPage;
-
-            if (AgentRecipeNote.Instance()->RecipeSearchOpen || (!P.Config.ShowLevelingRecipeProgress && !P.Config.ShowOtherRecipeProgress) || curPage > 1)
-                return;
-
-            if ((!P.Config.ShowLevelingRecipeProgress && curPage == 0) || (!P.Config.ShowOtherRecipeProgress && curPage == 1))
-                return;
-
-            try
-            {
-                var recipeWindow = Svc.GameGui.GetAddonByName("RecipeNote", 1);
-                if (recipeWindow == IntPtr.Zero)
-                    return;
-
-                var addonPtr = (AtkUnitBase*)recipeWindow.Address;
-                if (addonPtr == null)
-                    return;
-
-                var n = addonPtr->GetNodeById(39)->GetAsAtkComponentTreeList();
-                if (n == null)
-                    return;
-
-                RecipeInformation.UpdateCompletedRecipes();
-                var job = (Job)AgentRecipeNote.Instance()->SelectedCraftType + 8;
-                var jobLevel = CharacterInfo.JobLevel(job);
-                var filteredList = RecipeInformation.CompletedRecipes.Where(x => x.Key.Job == job).ToDictionary(x => x.Key.DivisionID, x => x.Value);
-
-                uint visited = 0;
-                uint toVisit = (((uint)Math.Round(jobLevel / 5.0) * 5) / 5);
-
-                var maxLevel = Svc.Data.GetExcelSheet<RecipeLevelTable>().Max(x => x.ClassJobLevel);
-                if (jobLevel == maxLevel)
-                    toVisit -= 1;
-
-                foreach (var subNode in n->UldManager.Nodes)
-                {
-                    var sn = (AtkComponentNode*)subNode.Value;
-                    var info = sn->Component->UldManager;
-                    var oinfo = (AtkUldComponentInfo*)info.Objects;
-
-                    if (oinfo->ComponentType is ComponentType.ListItemRenderer)
-                    {
-                        var compNode = sn->Component;
-                        var textNode = compNode->GetNodeById(4);
-                        if (textNode == null || textNode->Type is not NodeType.Text)
-                            continue;
-
-                        if (curPage == 0) // leveling
-                        {
-                            uint bracket = toVisit - visited;
-                            if (bracket > toVisit && curPage == 0)
-                                continue;
-
-                            if (filteredList.TryGetFirst(x => x.Key == bracket, out var entry))
-                            {
-                                var label = Svc.Data.GetExcelSheet<NotebookDivision>().GetRow(bracket).Name.ToString();
-
-                                if (entry.Value.Completed == entry.Value.Total)
-                                    textNode->GetAsAtkTextNode()->SetText($"{label} ✓");
-                                else
-                                    textNode->GetAsAtkTextNode()->SetText($"{label} [{entry.Value.Completed}/{entry.Value.Total}]");
-
-                            }
-                            visited++;
-                        }
-                        else if (curPage == 1) // special recipes
-                        {
-                            var curLabel = textNode->GetAsAtkTextNode()->NodeText.GetText();
-                            foreach (var (divisionId, v) in filteredList)
-                            {
-                                var divLabel = Svc.Data.GetExcelSheet<NotebookDivision>().GetRow(divisionId).Name.ToString();
-                                if (curLabel == divLabel)
-                                {
-                                    var noParenLabel = curLabel.Replace("(", "").Replace(")", "");
-                                    var trimLabel = noParenLabel.Length > 12 ? noParenLabel.Substring(0, 12) + "..." : noParenLabel;
-
-                                    if (v.Completed == v.Total)
-                                        textNode->GetAsAtkTextNode()->SetText($"{trimLabel} ✓");
-                                    else
-                                        textNode->GetAsAtkTextNode()->SetText($"{trimLabel} [{v.Completed}/{v.Total}]");
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                ex.Log();
-            }
-        }
-
-        public static RecipeWindowUI Create()
-        {
-            return new();
+            DrawMacroOptions();
+            DrawCosmicWindowOptions();
         }
 
         private unsafe void DrawCosmicEnduranceCounter()
@@ -209,21 +91,22 @@ namespace Artisan
             if (recipeWindow == IntPtr.Zero)
                 return;
 
-            var addonPtr = (AtkUnitBase*)recipeWindow.Address;
+            var addonPtr = (AtkUnitBase*)recipeWindow;
             if (addonPtr == null)
                 return;
 
             if (addonPtr->UldManager.NodeListCount >= 5)
             {
                 //var node = addonPtr->UldManager.NodeList[1]->GetAsAtkComponentNode()->Component->UldManager.NodeList[4];
-                var node = addonPtr->GetNodeById(50);
+                var node = addonPtr->UldManager.NodeList[6];
 
                 var position = AtkResNodeFunctions.GetNodePosition(node);
                 var scale = AtkResNodeFunctions.GetNodeScale(node);
                 var size = new Vector2(node->Width, node->Height) * scale;
+                var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
                 //position += ImGuiHelpers.MainViewport.Pos;
-                ImGui.CalcTextSize("Craft X Times:");
-                var craftableCount = addonPtr->GetNodeById(34)->GetAsAtkTextNode()->NodeText.ToString() == "" ? 0 : Convert.ToInt32(addonPtr->GetNodeById(34)->GetAsAtkTextNode()->NodeText.ToString().GetNumbers());
+                var textHeight = ImGui.CalcTextSize("Craft X Times:");
+                var craftableCount = addonPtr->UldManager.NodeList[24]->GetAsAtkTextNode()->NodeText.ToString() == "" ? 0 : Convert.ToInt32(addonPtr->UldManager.NodeList[24]->GetAsAtkTextNode()->NodeText.ToString().GetNumbers());
 
                 if (craftableCount == 0) return;
 
@@ -241,47 +124,64 @@ namespace Artisan
         {
             var recipeWindow = Svc.GameGui.GetAddonByName("WKSRecipeNotebook", 1);
             if (recipeWindow == IntPtr.Zero)
-            {
-                HideCosmicCraftingMenuWindow();
                 return;
-            }
 
-            var addonPtr = (AtkUnitBase*)recipeWindow.Address;
+            var addonPtr = (AtkUnitBase*)recipeWindow;
             if (addonPtr == null)
                 return;
 
-            if (addonPtr->UldManager.NodeListCount >= 2 && addonPtr->GetNodeById(54)->IsVisible())
+            var baseX = addonPtr->X;
+            var baseY = addonPtr->Y;
+
+            if (addonPtr->UldManager.NodeListCount >= 2 && addonPtr->UldManager.NodeList[1]->IsVisible())
             {
-                var node = addonPtr->GetNodeById(54);
+                var node = addonPtr->UldManager.NodeList[1];
 
                 if (!node->IsVisible())
                     return;
 
-                ShowCosmicCraftMenuWindow();
-
                 var position = AtkResNodeFunctions.GetNodePosition(node);
                 var scale = AtkResNodeFunctions.GetNodeScale(node);
                 var size = new Vector2(node->Width, node->Height) * scale;
+                var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
 
-                if (P.Config.LockMiniMenuR || AtkResNodeFunctions.ResetPosition)
+                ImGuiHelpers.ForceNextWindowMainViewport();
+                if ((AtkResNodeFunctions.ResetPosition && position.X != 0) || P.Config.LockMiniMenuR)
                 {
-                    if ((AtkResNodeFunctions.ResetPosition && position.X != 0) || P.Config.LockMiniMenuR)
-                    {
-                        _cosmicCraftMenuWindowUi.ForceMainWindow = true;
-                        _cosmicCraftMenuWindowUi.PositionCondition = ImGuiCond.Always;
-                        _cosmicCraftMenuWindowUi.Position = new Vector2(position.X + size.X + 7, position.Y + 7);
-                        AtkResNodeFunctions.ResetPosition = false;
-                    }
+                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X + size.X + 7, position.Y + 7), ImGuiCond.Always);
+                    AtkResNodeFunctions.ResetPosition = false;
                 }
                 else
                 {
-                    _cosmicCraftMenuWindowUi.ForceMainWindow = false;
-                    _cosmicCraftMenuWindowUi.PositionCondition = ImGuiCond.FirstUseEver;
-                    _cosmicCraftMenuWindowUi.Position = new Vector2(position.X + size.X + 7, position.Y + 7);
+                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X + size.X + 7, position.Y + 7), ImGuiCond.FirstUseEver);
                 }
 
-                if (!_cosmicCraftMenuWindowUi.EnableMacroOptions)
-                    _cosmicCraftMenuWindowUi.EnableMacroOptions = true;
+                //Svc.Log.Debug($"{position.X + node->Width + 7}");
+                ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(7f, 7f));
+                ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, new Vector2(0f, 0f));
+                ImGui.Begin($"###CosmicOptions{node->NodeId}", ImGuiWindowFlags.NoScrollbar
+                    | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.AlwaysUseWindowPadding);
+
+                ImGui.Spacing();
+
+                DrawCopyOfCraftMenu();
+                if (SimpleTweaks.IsFocusTweakEnabled())
+                {
+                    ImGuiEx.TextWrapped(ImGuiColors.DalamudRed, $@"Warning: You have the ""Auto Focus Recipe Search"" SimpleTweak enabled. This is highly incompatible with Artisan and is recommended to disable it.");
+                }
+                if (Endurance.RecipeID != 0)
+                {
+                    var config = P.Config.RecipeConfigs.GetValueOrDefault(Endurance.RecipeID) ?? new();
+                    if (config.Draw(Endurance.RecipeID))
+                    {
+                        Svc.Log.Debug($"Updating config for {Endurance.RecipeID}");
+                        P.Config.RecipeConfigs[Endurance.RecipeID] = config;
+                        P.Config.Save();
+                    }
+                }
+
+                ImGui.End();
+                ImGui.PopStyleVar(2);
             }
         }
 
@@ -304,18 +204,19 @@ namespace Artisan
                 }
                 else
                 {
-                    string searchText = Svc.Data.Excel.GetSheet<Addon>().GetRow(1412).Text.GetText();
+                    string searchText = Svc.Data.Excel.GetSheet<Addon>().GetRow(1412).Text.ExtractText();
                     searchLabel->GetAsAtkTextNode()->SetText(searchText);
                     return;
                 }
 
                 var textInput = (AtkComponentTextInput*)searchNode->GetComponent();
-                Search = Marshal.PtrToStringAnsi(new IntPtr(textInput->AtkComponentInputBase.EvaluatedString.StringPtr)).Trim();
-                ImGui.CalcTextSize(Search);
+                Search = Marshal.PtrToStringAnsi(new IntPtr(textInput->AtkComponentInputBase.UnkText1.StringPtr)).Trim();
+                var textSize = ImGui.CalcTextSize(Search);
 
                 var position = AtkResNodeFunctions.GetNodePosition(searchNode);
                 var scale = AtkResNodeFunctions.GetNodeScale(searchNode);
                 var size = new Vector2(searchNode->Width, searchNode->Height) * scale;
+                var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
 
                 ImGuiHelpers.ForceNextWindowMainViewport();
                 ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X, position.Y + size.Y));
@@ -373,7 +274,7 @@ namespace Artisan
             {
                 try
                 {
-                    var subcontext = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextMenu").Address;
+                    var subcontext = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextMenu");
                     if (subcontext != null && subcontext->IsVisible)
                         return;
 
@@ -387,19 +288,20 @@ namespace Artisan
                     if (timerWindow == IntPtr.Zero)
                         return;
 
-                    var atkUnitBase = (AtkUnitBase*)timerWindow.Address;
-                    var node = atkUnitBase->GetNodeById(27);
+                    var atkUnitBase = (AtkUnitBase*)timerWindow;
+                    var node = atkUnitBase->UldManager.NodeList[19];
 
-                    if (node->IsVisible())
-                        node->ToggleVisibility(false);
+                    if (!node->IsVisible())
+                        return;
 
                     var position = AtkResNodeFunctions.GetNodePosition(node);
                     var scale = AtkResNodeFunctions.GetNodeScale(node);
                     var size = new Vector2(node->Width, node->Height) * scale;
+                    var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
                     var textSize = ImGui.CalcTextSize("Create Crafting List");
 
                     ImGuiHelpers.ForceNextWindowMainViewport();
-                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X, position.Y - 6f.Scale()));
+                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X, position.Y + (textSize.Y * scale.Y) + (14f * scale.Y)));
 
                     ImGui.PushStyleColor(ImGuiCol.WindowBg, 0);
                     ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 0f);
@@ -458,12 +360,12 @@ namespace Artisan
             {
                 try
                 {
-                    var subcontext = (AtkUnitBase*)Svc.GameGui.GetAddonByName("AddonContextSub").Address;
+                    var subcontext = (AtkUnitBase*)Svc.GameGui.GetAddonByName("AddonContextSub");
 
                     if (subcontext != null && subcontext->IsVisible)
                         return;
 
-                    subcontext = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextMenu").Address;
+                    subcontext = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextMenu");
                     if (subcontext != null && subcontext->IsVisible)
                         return;
 
@@ -471,12 +373,12 @@ namespace Artisan
                     if (timerWindow == IntPtr.Zero)
                         return;
 
-                    var atkUnitBase = (AtkUnitBase*)timerWindow.Address;
+                    var atkUnitBase = (AtkUnitBase*)timerWindow;
 
-                    if (atkUnitBase->AtkValues[233].Type != AtkValueType.Int)
+                    if (atkUnitBase->AtkValues[233].Type != FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Int)
                         return;
 
-                    var node = atkUnitBase->GetNodeById(15);//->UldManager.NodeList[97];
+                    var node = atkUnitBase->UldManager.NodeList[97];
 
                     if (!node->IsVisible())
                         return;
@@ -484,6 +386,7 @@ namespace Artisan
                     var position = AtkResNodeFunctions.GetNodePosition(node);
                     var scale = AtkResNodeFunctions.GetNodeScale(node);
                     var size = new Vector2(node->Width, node->Height) * scale;
+                    var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
 
                     var textSize = ImGui.CalcTextSize("Create Crafting List");
 
@@ -512,7 +415,7 @@ namespace Artisan
                         ImGui.SameLine();
                         var oldScale = ImGui.GetIO().FontGlobalScale;
                         ImGui.GetIO().FontGlobalScale = 0.80f * scale.X;
-                        using (ImRaii.PushFont(ImGui.GetFont()))
+                        using (var f = ImRaii.PushFont(ImGui.GetFont()))
                         {
                             if (ImGui.Button($"Create Crafting List (with subcrafts) (Star only)", new Vector2(size.X / 2, s.Y)))
                             {
@@ -570,7 +473,7 @@ namespace Artisan
 
                 if (!boostedCraftsOnly || (boostedCraftsOnly && starred))
                 {
-                    if (LuminaSheets.RecipeSheet.Values.TryGetFirst(x => x.ItemResult.RowId == ItemId && x.CraftType.RowId + 8 == job, out var recipe))
+                    if (LuminaSheets.RecipeSheet.Values.FindFirst(x => x.ItemResult.RowId == ItemId && x.CraftType.RowId + 8 == job, out var recipe))
                     {
                         var timesToAdd = requested / recipe.AmountResult;
 
@@ -629,7 +532,7 @@ namespace Artisan
 
                 if (!boostedCraftOnly || (boostedCraftOnly && starred))
                 {
-                    if (LuminaSheets.RecipeSheet.Values.TryGetFirst(x => x.ItemResult.RowId == ItemId && x.CraftType.RowId + 8 == job, out var recipe))
+                    if (LuminaSheets.RecipeSheet.Values.FindFirst(x => x.ItemResult.RowId == ItemId && x.CraftType.RowId + 8 == job, out var recipe))
                     {
                         var timesToAdd = requested / recipe.AmountResult;
 
@@ -662,7 +565,7 @@ namespace Artisan
                 if (subWindow == IntPtr.Zero)
                     return;
 
-                var addonPtr = (AtkUnitBase*)subWindow.Address;
+                var addonPtr = (AtkUnitBase*)subWindow;
                 if (addonPtr == null)
                     return;
 
@@ -677,6 +580,7 @@ namespace Artisan
                 var position = AtkResNodeFunctions.GetNodePosition(node);
                 var scale = AtkResNodeFunctions.GetNodeScale(node);
                 var size = new Vector2(node->Width, node->Height) * scale;
+                var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
                 var textSize = ImGui.CalcTextSize("Create crafting list for this phase");
 
                 ImGuiHelpers.ForceNextWindowMainViewport();
@@ -696,22 +600,14 @@ namespace Artisan
                     | ImGuiWindowFlags.AlwaysUseWindowPadding | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings);
 
 
-
-                void getNodes(out AtkTextNode* itemNameNode1, out AtkTextNode* itemNameNode2, out AtkTextNode* phaseProgress, out AtkTextNode* currentPartNode)
-                {
-                    itemNameNode1 = addonPtr->GetTextNodeById(4);//UldManager.NodeList[37]->GetAsAtkTextNode();
-                    itemNameNode2 = addonPtr->GetTextNodeById(6);//UldManager.NodeList[37]->GetAsAtkTextNode();
-                    phaseProgress = addonPtr->GetTextNodeById(16);//->UldManager.NodeList[26]->GetAsAtkTextNode();
-                    currentPartNode = addonPtr->GetTextNodeById(13);//UldManager.NodeList[28]->GetAsAtkTextNode();
-                }
                 if (ImGui.Button("Create crafting list for this phase"))
                 {
-                    getNodes(out AtkTextNode* itemNameNode1, out AtkTextNode* itemNameNode2, out AtkTextNode* phaseProgress, out AtkTextNode* currentPartNode);
-                    var i1 = itemNameNode1->NodeText.GetText();
-                    var i2 = itemNameNode2->NodeText.GetText();
-                    if (LuminaSheets.WorkshopSequenceSheet.Values.Any(x => x.ResultItem.Value.Name.GetText() == i1 || x.ResultItem.Value.Name.GetText() == i2))
+                    var itemNameNode = addonPtr->UldManager.NodeList[37]->GetAsAtkTextNode();
+                    var phaseProgress = addonPtr->UldManager.NodeList[26]->GetAsAtkTextNode();
+
+                    if (LuminaSheets.WorkshopSequenceSheet.Values.Any(x => x.ResultItem.Value.Name.ExtractText() == itemNameNode->NodeText.ExtractText()))
                     {
-                        var project = LuminaSheets.WorkshopSequenceSheet.Values.First(x => x.ResultItem.Value.Name.GetText() == i1 || x.ResultItem.Value.Name.GetText() == i2);
+                        var project = LuminaSheets.WorkshopSequenceSheet.Values.First(x => x.ResultItem.Value.Name.ExtractText() == itemNameNode->NodeText.ExtractText());
                         var phaseNum = Convert.ToInt32(phaseProgress->NodeText.ToString().First().ToString());
 
                         if (project.CompanyCraftPart.Count(x => x.RowId > 0) == 1)
@@ -719,19 +615,20 @@ namespace Artisan
                             var part = project.CompanyCraftPart.First(x => x.RowId > 0).Value;
                             var phase = part.CompanyCraftProcess[phaseNum - 1];
 
-                            FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.GetText(), phaseNum, false, null, project);
+                            FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.ExtractText(), phaseNum, false, null, project);
                             Notify.Success("FC Workshop List Created");
                         }
                         else
                         {
-                            string partStep = currentPartNode->NodeText.GetText().Split(":").Last();
+                            var currentPartNode = addonPtr->UldManager.NodeList[28]->GetAsAtkTextNode();
+                            string partStep = currentPartNode->NodeText.ExtractText().Split(":").Last();
 
-                            if (project.CompanyCraftPart.Any(x => x.Value.CompanyCraftType.Value.Name.GetText() == partStep))
+                            if (project.CompanyCraftPart.Any(x => x.Value.CompanyCraftType.Value.Name.ExtractText() == partStep))
                             {
-                                var part = project.CompanyCraftPart.First(x => x.Value.CompanyCraftType.Value.Name.GetText() == partStep).Value;
+                                var part = project.CompanyCraftPart.First(x => x.Value.CompanyCraftType.Value.Name.ExtractText() == partStep).Value;
                                 var phase = part.CompanyCraftProcess[phaseNum - 1];
 
-                                FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.GetText(), phaseNum, false, null, project);
+                                FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.ExtractText(), phaseNum, false, null, project);
                                 Notify.Success("FC Workshop List Created");
                             }
                         }
@@ -740,12 +637,12 @@ namespace Artisan
 
                 if (ImGui.Button("Create crafting list for this phase (including precrafts)"))
                 {
-                    getNodes(out AtkTextNode* itemNameNode1, out AtkTextNode* itemNameNode2, out AtkTextNode* phaseProgress, out AtkTextNode* currentPartNode);
-                    var i1 = itemNameNode1->NodeText.GetText();
-                    var i2 = itemNameNode2->NodeText.GetText();
-                    if (LuminaSheets.WorkshopSequenceSheet.Values.Any(x => x.ResultItem.Value.Name.GetText() == i1 || x.ResultItem.Value.Name.GetText() == i2))
+                    var itemNameNode = addonPtr->UldManager.NodeList[37]->GetAsAtkTextNode();
+                    var phaseProgress = addonPtr->UldManager.NodeList[26]->GetAsAtkTextNode();
+
+                    if (LuminaSheets.WorkshopSequenceSheet.Values.Any(x => x.ResultItem.Value.Name.ExtractText() == itemNameNode->NodeText.ExtractText()))
                     {
-                        var project = LuminaSheets.WorkshopSequenceSheet.Values.First(x => x.ResultItem.Value.Name.GetText() == i1 || x.ResultItem.Value.Name.GetText() == i2);
+                        var project = LuminaSheets.WorkshopSequenceSheet.Values.First(x => x.ResultItem.Value.Name.ExtractText() == itemNameNode->NodeText.ExtractText());
                         var phaseNum = Convert.ToInt32(phaseProgress->NodeText.ToString().First().ToString());
 
                         if (project.CompanyCraftPart.Count(x => x.RowId > 0) == 1)
@@ -753,19 +650,20 @@ namespace Artisan
                             var part = project.CompanyCraftPart.First(x => x.RowId > 0).Value;
                             var phase = part.CompanyCraftProcess[phaseNum - 1];
 
-                            FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.GetText(), phaseNum, true, null, project);
+                            FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.ExtractText(), phaseNum, true, null, project);
                             Notify.Success("FC Workshop List Created");
                         }
                         else
                         {
-                            string partStep = currentPartNode->NodeText.GetText().Split(":").Last();
+                            var currentPartNode = addonPtr->UldManager.NodeList[28]->GetAsAtkTextNode();
+                            string partStep = currentPartNode->NodeText.ExtractText().Split(":").Last();
 
-                            if (project.CompanyCraftPart.Any(x => x.Value.CompanyCraftType.Value.Name.GetText() == partStep))
+                            if (project.CompanyCraftPart.Any(x => x.Value.CompanyCraftType.Value.Name.ExtractText() == partStep))
                             {
-                                var part = project.CompanyCraftPart.First(x => x.Value.CompanyCraftType.Value.Name.GetText() == partStep).Value;
+                                var part = project.CompanyCraftPart.First(x => x.Value.CompanyCraftType.Value.Name.ExtractText() == partStep).Value;
                                 var phase = part.CompanyCraftProcess[phaseNum - 1];
 
-                                FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.GetText(), phaseNum, true, null, project);
+                                FCWorkshopUI.CreatePhaseList(phase.Value!, part.CompanyCraftType.Value.Name.ExtractText(), phaseNum, true, null, project);
                                 Notify.Success("FC Workshop List Created");
                             }
                         }
@@ -800,113 +698,170 @@ namespace Artisan
             }
         }
 
-        public override void OnClose()
-        {
-            HideCraftingMenuWindow(reset: true);
-            HideCosmicCraftingMenuWindow(reset: true);
 
-            base.OnClose();
-        }
-
-
-
-
-        public static unsafe void DrawOptions()
+        public unsafe static void DrawOptions()
         {
             var recipeWindow = Svc.GameGui.GetAddonByName("RecipeNote", 1);
             if (recipeWindow == IntPtr.Zero)
-            {
-                HideCraftingMenuWindow();
                 return;
-            }
 
-            var addonPtr = (AtkUnitBase*)recipeWindow.Address;
+            var addonPtr = (AtkUnitBase*)recipeWindow;
             if (addonPtr == null)
                 return;
 
+            var baseX = addonPtr->X;
+            var baseY = addonPtr->Y;
+
             if (addonPtr->UldManager.NodeListCount > 1)
             {
-                if (addonPtr->GetNodeById(109)->IsVisible())//1
+                if (addonPtr->UldManager.NodeList[1]->IsVisible())
                 {
-                    var node = addonPtr->GetNodeById(109);
+                    var node = addonPtr->UldManager.NodeList[1];
 
                     if (!node->IsVisible())
                         return;
 
-                    ShowCraftMenuWindow($"###Options{node->NodeId}");
-
-                    var position = AtkResNodeFunctions.GetNodePosition(node);
-                    var scale = AtkResNodeFunctions.GetNodeScale(node);
-                    var size = new Vector2(node->Width, node->Height) * scale;
-
-                    if (P.Config.LockMiniMenuR || AtkResNodeFunctions.ResetPosition)
+                    if (P.Config.LockMiniMenuR)
                     {
+                        var position = AtkResNodeFunctions.GetNodePosition(node);
+                        var scale = AtkResNodeFunctions.GetNodeScale(node);
+                        var size = new Vector2(node->Width, node->Height) * scale;
+                        var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
+                        //position += ImGuiHelpers.MainViewport.Pos;
+
+                        ImGuiHelpers.ForceNextWindowMainViewport();
+
                         if ((AtkResNodeFunctions.ResetPosition && position.X != 0) || P.Config.LockMiniMenuR)
                         {
-                            _craftMenuWindowUi.ForceMainWindow = true;
-                            _craftMenuWindowUi.PositionCondition = ImGuiCond.Always;
-                            _craftMenuWindowUi.Position = new Vector2(position.X + size.X + 7, position.Y + 7);
+                            ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X + size.X + 7, position.Y + 7), ImGuiCond.Always);
                             AtkResNodeFunctions.ResetPosition = false;
                         }
+                        else
+                        {
+                            ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X + size.X + 7, position.Y + 7), ImGuiCond.FirstUseEver);
+                        }
                     }
-                    else
-                    {
-                        _craftMenuWindowUi.ForceMainWindow = false;
-                        _craftMenuWindowUi.PositionCondition = ImGuiCond.FirstUseEver;
-                        _craftMenuWindowUi.Position = new Vector2(position.X + size.X + 7, position.Y + 7);
-                    }
+
+                    ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(7f, 7f));
+                    ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, new Vector2(0f, 0f));
+                    var flags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.AlwaysUseWindowPadding;
+                    if (P.Config.PinMiniMenu)
+                        flags |= ImGuiWindowFlags.NoMove;
+
+                    ImGui.Begin($"###Options{node->NodeId}", flags);
+
+
+                    DrawCopyOfCraftMenu();
+
+                    ImGui.End();
+                    ImGui.PopStyleVar(2);
                 }
             }
 
         }
 
-        public static unsafe void DrawMacroOptions()
+        private static void DrawCopyOfCraftMenu()
+        {
+            if (ImGuiEx.AddHeaderIcon("OpenConfig", FontAwesomeIcon.Cog, new ImGuiEx.HeaderIconOptions() { Tooltip = "Open Config" }))
+            {
+                P.PluginUi.IsOpen = true;
+            }
+
+            bool autoMode = P.Config.AutoMode;
+
+            if (ImGui.Checkbox("Automatic Action Execution Mode", ref autoMode))
+            {
+                P.Config.AutoMode = autoMode;
+                P.Config.Save();
+            }
+            bool enable = Endurance.Enable;
+
+            if (!CraftingListFunctions.HasItemsForRecipe(Endurance.RecipeID) && !Endurance.Enable)
+                ImGui.BeginDisabled();
+
+            if (ImGui.Checkbox("Endurance Mode Toggle", ref enable))
+            {
+                Endurance.ToggleEndurance(enable);
+            }
+
+            if (!CraftingListFunctions.HasItemsForRecipe(Endurance.RecipeID) && !Endurance.Enable)
+            {
+                ImGui.EndDisabled();
+
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                {
+                    var recipe = LuminaSheets.RecipeSheet!.First(x => x.Key == Endurance.RecipeID).Value;
+                    ImGui.BeginTooltip();
+                    ImGui.Text($"You cannot start Endurance as you do not possess ingredients to craft this recipe.\r\nMissing: {string.Join(", ", PreCrafting.MissingIngredients(recipe))}");
+                    ImGui.EndTooltip();
+                }
+            }
+        }
+
+        public unsafe static void DrawMacroOptions()
         {
             var recipeWindow = Svc.GameGui.GetAddonByName("RecipeNote", 1);
             if (recipeWindow == IntPtr.Zero)
-            {
-                HideCraftingMenuWindow();
                 return;
-            }
 
-            var addonPtr = (AtkUnitBase*)recipeWindow.Address;
+            var addonPtr = (AtkUnitBase*)recipeWindow;
             if (addonPtr == null)
                 return;
 
-            if (addonPtr->UldManager.NodeListCount >= 2 && addonPtr->GetNodeById(109)->IsVisible())
+            var baseX = addonPtr->X;
+            var baseY = addonPtr->Y;
+
+            if (addonPtr->UldManager.NodeListCount >= 2 && addonPtr->UldManager.NodeList[1]->IsVisible())
             {
-                var node = addonPtr->GetNodeById(109);
+                var node = addonPtr->UldManager.NodeList[1];
 
                 if (!node->IsVisible())
                     return;
 
-                ShowCraftMenuWindow($"###Options{node->NodeId}");
-
                 var position = AtkResNodeFunctions.GetNodePosition(node);
                 var scale = AtkResNodeFunctions.GetNodeScale(node);
                 var size = new Vector2(node->Width, node->Height) * scale;
+                var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
 
-                if (P.Config.LockMiniMenuR || AtkResNodeFunctions.ResetPosition)
+                ImGuiHelpers.ForceNextWindowMainViewport();
+                if ((AtkResNodeFunctions.ResetPosition && position.X != 0) || P.Config.LockMiniMenuR)
                 {
-                    if ((AtkResNodeFunctions.ResetPosition && position.X != 0) || P.Config.LockMiniMenuR)
-                    {
-                        _craftMenuWindowUi.ForceMainWindow = true;
-                        _craftMenuWindowUi.PositionCondition = ImGuiCond.Always;
-                        _craftMenuWindowUi.Position = new Vector2(position.X + size.X + 7, position.Y + 7);
-                        AtkResNodeFunctions.ResetPosition = false;
-                    }
+                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X + size.X + 7, position.Y + 7), ImGuiCond.FirstUseEver);
+                    AtkResNodeFunctions.ResetPosition = false;
                 }
                 else
                 {
-                    _craftMenuWindowUi.ForceMainWindow = false;
-                    _craftMenuWindowUi.PositionCondition = ImGuiCond.FirstUseEver;
-                    _craftMenuWindowUi.Position = new Vector2(position.X + size.X + 7, position.Y + 7);
+                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X + size.X + 7, position.Y + 7), ImGuiCond.FirstUseEver);
                 }
 
-                if (!_craftMenuWindowUi.EnableMacroOptions)
-                    _craftMenuWindowUi.EnableMacroOptions = true;
+                //Svc.Log.Debug($"{position.X + node->Width + 7}");
+                ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(7f, 7f));
+                ImGui.PushStyleVar(ImGuiStyleVar.WindowMinSize, new Vector2(0f, 0f));
+                ImGui.Begin($"###Options{node->NodeId}", ImGuiWindowFlags.NoScrollbar
+                    | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.AlwaysUseWindowPadding);
+
+                ImGui.Spacing();
+
+                if (SimpleTweaks.IsFocusTweakEnabled())
+                {
+                    ImGuiEx.TextWrapped(ImGuiColors.DalamudRed, $@"Warning: You have the ""Auto Focus Recipe Search"" SimpleTweak enabled. This is highly incompatible with Artisan and is recommended to disable it.");
+                }
+                if (Endurance.RecipeID != 0)
+                {
+                    var config = P.Config.RecipeConfigs.GetValueOrDefault(Endurance.RecipeID) ?? new();
+                    if (config.Draw(Endurance.RecipeID))
+                    {
+                        P.Config.RecipeConfigs[Endurance.RecipeID] = config;
+                        P.Config.Save();
+                    }
+                }
+
+                ImGui.End();
+                ImGui.PopStyleVar(2);
             }
         }
+
+        
 
         internal static unsafe void DrawEnduranceCounter()
         {
@@ -917,22 +872,22 @@ namespace Artisan
             if (recipeWindow == IntPtr.Zero)
                 return;
 
-            var addonPtr = (AtkUnitBase*)recipeWindow.Address;
+            var addonPtr = (AtkUnitBase*)recipeWindow;
             if (addonPtr == null)
                 return;
 
             if (addonPtr->UldManager.NodeListCount >= 5)
             {
                 //var node = addonPtr->UldManager.NodeList[1]->GetAsAtkComponentNode()->Component->UldManager.NodeList[4];
-                var node = addonPtr->GetNodeById(103);// UldManager.NodeList[8];
+                var node = addonPtr->UldManager.NodeList[8];
 
                 var position = AtkResNodeFunctions.GetNodePosition(node);
                 var scale = AtkResNodeFunctions.GetNodeScale(node);
                 var size = new Vector2(node->Width, node->Height) * scale;
+                var center = new Vector2((position.X + size.X) / 2, (position.Y - size.Y) / 2);
                 //position += ImGuiHelpers.MainViewport.Pos;
-                ImGui.CalcTextSize("Craft X Times:");
-                var text = addonPtr->GetTextNodeById(78)->NodeText.ToString();
-                var craftableCount = text == "" ? 0 : Convert.ToInt32(text.GetNumbers());
+                var textHeight = ImGui.CalcTextSize("Craft X Times:");
+                var craftableCount = addonPtr->UldManager.NodeList[35]->GetAsAtkTextNode()->NodeText.ToString() == "" ? 0 : Convert.ToInt32(addonPtr->UldManager.NodeList[35]->GetAsAtkTextNode()->NodeText.ToString().GetNumbers());
 
                 if (craftableCount == 0) return;
 
@@ -960,13 +915,13 @@ namespace Artisan
 
             var oldScale = ImGui.GetIO().FontGlobalScale;
             ImGui.GetIO().FontGlobalScale = 1f * scale.X;
-            using (ImRaii.PushFont(ImGui.GetFont()))
+            using (var font = ImRaii.PushFont(ImGui.GetFont()))
             {
                 ImGui.AlignTextToFramePadding();
                 ImGui.Text("Craft X Times:");
                 ImGui.SameLine();
                 ImGui.PushItemWidth(110f * scale.X);
-                if (ImGui.InputInt($"###TimesRepeat{node->NodeId}", ref P.Config.CraftX, step: 1, stepFast: 1))
+                if (ImGui.InputInt($"###TimesRepeat{node->NodeId}", ref P.Config.CraftX))
                 {
                     if (P.Config.CraftX < 0)
                         P.Config.CraftX = 0;
@@ -1000,75 +955,6 @@ namespace Artisan
             ImGui.End();
             ImGui.PopStyleVar(5);
             ImGui.PopStyleColor();
-        }
-
-        private static void ShowCraftMenuWindow(string windowName)
-        {
-
-            _craftMenuWindowUi.Flags = GetWindowFlags();
-            _craftMenuWindowUi.IsOpen = true;
-
-        }
-
-        public static CraftMenuWindowUI AddCraftMenuWindow()
-        {
-            _craftMenuWindowUi = new CraftMenuWindowUI("Artisan Crafting Window###CraftMenuWindow", GetWindowFlags());
-            return _craftMenuWindowUi;
-        }
-
-        private static void HideCraftingMenuWindow(bool reset = false)
-        {
-            if (_craftMenuWindowUi == null)
-            {
-                return;
-            }
-
-            _craftMenuWindowUi.IsOpen = false;
-
-            if (!reset)
-            {
-                return;
-            }
-
-            _craftMenuWindowUi.EnableMacroOptions = false;
-        }
-
-        private static void ShowCosmicCraftMenuWindow()
-        {
-            _cosmicCraftMenuWindowUi.Flags = GetWindowFlags();
-            _cosmicCraftMenuWindowUi.IsOpen = true;
-        }
-
-        public static CraftMenuWindowUI AddCosmicCraftMenuWindow()
-        {
-            _cosmicCraftMenuWindowUi = new CraftMenuWindowUI("Artisan Crafting Window###CosmicCraftMenuWindow", GetWindowFlags());
-            return _cosmicCraftMenuWindowUi;
-        }
-
-        private static void HideCosmicCraftingMenuWindow(bool reset = false)
-        {
-            if (_cosmicCraftMenuWindowUi == null)
-            {
-                return;
-            }
-
-            _cosmicCraftMenuWindowUi.IsOpen = false;
-
-            if (!reset)
-            {
-                return;
-            }
-
-            _cosmicCraftMenuWindowUi.EnableMacroOptions = false;
-        }
-
-        private static ImGuiWindowFlags GetWindowFlags()
-        {
-            var flags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.AlwaysUseWindowPadding;
-            if (P.Config.PinMiniMenu)
-                flags |= ImGuiWindowFlags.NoMove;
-
-            return flags;
         }
     }
 }

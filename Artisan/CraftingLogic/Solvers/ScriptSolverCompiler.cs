@@ -18,6 +18,7 @@ namespace Artisan.CraftingLogic.Solvers;
 
 public class ScriptSolverCompiler : IDisposable
 {
+    private Thread _compilerThread;
     private ConcurrentQueue<ScriptSolverSettings.Script> _compilationQueue = new();
     private Semaphore _sema = new(0, int.MaxValue);
     private volatile bool _cancel;
@@ -34,6 +35,7 @@ public class ScriptSolverCompiler : IDisposable
     {
         _cancel = true;
         _sema.Release();
+        _compilerThread.Join();
     }
 
     public void Recompile(ScriptSolverSettings.Script script)

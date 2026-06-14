@@ -12,32 +12,30 @@ namespace Artisan.CraftingLogic.Solvers
 
         public IEnumerable<ISolverDefinition.Desc> Flavours(CraftState craft)
         {
-            if (!craft.CraftExpert && (craft.CraftHQ || craft.CraftRequiredQuality > 0))
-                yield return new(this, 0, 0, "Standard Recipe Solver");
+            if (!craft.CraftExpert && craft.CraftHQ)
+                yield return new(this, 0, 2, "Standard Recipe Solver");
         }
 
-        public Solver Create(CraftState craft, int flavour) => new StandardSolver();
-
-        public IEnumerable<ISolverDefinition.Desc> Flavours()
-        {
-            yield return new(this, 0, 0, "Standard Recipe Solver");
-        }
+        public Solver Create(CraftState craft, int flavour) => new StandardSolver(flavour != 0);
     }
 
     public class StandardSolver : Solver
     {
+        private bool _expert;
+
         // for normal crafts, we don't ever want to use manip/wn more than once
         private bool _manipulationUsed;
         private bool _wasteNotUsed;
         private bool _qualityStarted;
         private bool _venereationUsed;
         private bool _trainedEyeUsed;
-        private int _materialMiracleUses;
+        private bool _materialMiracleUsed;
 
         private Solver? _fallback; //For Material Miracle
 
-        public StandardSolver()
+        public StandardSolver(bool expert)
         {
+            _expert = expert;
             _fallback = new ExpertSolver();
         }
 
@@ -50,7 +48,6 @@ namespace Artisan.CraftingLogic.Solvers
                 if (rec.Action != Skills.MaterialMiracle)
                 {
                     if (step.Durability <= 10 && Simulator.CanUseAction(craft, step, Skills.MastersMend)) rec.Action = Skills.MastersMend;
-                    if (step.Durability <= 10 && Simulator.CanUseAction(craft, step, Skills.Manipulation) && step.ManipulationLeft <= 1) rec.Action = Skills.Manipulation;
                     if (step.Durability <= 10 && Simulator.CanUseAction(craft, step, Skills.ImmaculateMend) && craft.CraftDurability >= 70) rec.Action = Skills.ImmaculateMend;
                 }
             }
@@ -58,12 +55,11 @@ namespace Artisan.CraftingLogic.Solvers
             {
                 var stepClone = rec.Action;
                 if (WillActFail(craft, step, stepClone) && Simulator.CanUseAction(craft, step, Skills.MastersMend)) rec.Action = Skills.MastersMend;
-                if (WillActFail(craft, step, stepClone) && Simulator.CanUseAction(craft, step, Skills.Manipulation) && step.ManipulationLeft <= 1) rec.Action = Skills.Manipulation;
                 if (WillActFail(craft, step, stepClone) && Simulator.CanUseAction(craft, step, Skills.ImmaculateMend) && craft.CraftDurability >= 70) rec.Action = Skills.ImmaculateMend;
 
             }
 
-            if ((rec.Action is not Skills.MastersMend and not Skills.ImmaculateMend) &&
+            if ((rec.Action is not Skills.MastersMend or Skills.ImmaculateMend) &&
                 step.Quality < craft.CraftQualityMax &&
                 Simulator.CanUseAction(craft, step, Skills.ByregotsBlessing) &&
                 step.RemainingCP - Simulator.GetCPCost(step, rec.Action) < Simulator.GetCPCost(step, Skills.ByregotsBlessing) &&
@@ -80,11 +76,7 @@ namespace Artisan.CraftingLogic.Solvers
                 rec.Action = Skills.TrainedPerfection;
 
             if (WillActFail(craft, step, rec.Action))
-            {
-                var bestSynth = BestSynthesis(craft, step);
-                rec.Action = bestSynth != Skills.BasicSynthesis ? bestSynth :
-                    CanSpamBasicToComplete(craft, step) ? Skills.BasicSynthesis : Skills.RapidSynthesis;
-            }
+                rec.Action = Skills.BasicSynthesis;
 
             return rec;
         }
@@ -159,12 +151,12 @@ namespace Artisan.CraftingLogic.Solvers
             _qualityStarted |= step.PrevComboAction is Skills.BasicTouch or Skills.StandardTouch or Skills.AdvancedTouch or Skills.HastyTouch or Skills.ByregotsBlessing or Skills.PrudentTouch
                 or Skills.PreciseTouch or Skills.TrainedEye or Skills.PreparatoryTouch or Skills.TrainedFinesse or Skills.Innovation;
             _venereationUsed |= step.PrevComboAction == Skills.Veneration;
-            _materialMiracleUses = step.PrevComboAction == Skills.MaterialMiracle ? _materialMiracleUses + 1 : _materialMiracleUses;
+            _materialMiracleUsed |= step.PrevComboAction == Skills.MaterialMiracle && !P.Config.MaterialMiracleMulti;
 
             if (step.MaterialMiracleActive)
                 return fallbackRec;
 
-            if (_materialMiracleUses < P.Config.StandardMMUses && step.Index > P.Config.StandardMMSteps && Simulator.CanUseAction(craft, step, Skills.MaterialMiracle))
+            if (P.Config.UseMaterialMiracle && !_materialMiracleUsed && Simulator.CanUseAction(craft, step, Skills.MaterialMiracle))
                 return new(Skills.MaterialMiracle);
 
             bool inCombo = (step.PrevComboAction == Skills.BasicTouch && Simulator.CanUseAction(craft, step, Skills.StandardTouch)) || (step.PrevComboAction == Skills.StandardTouch && Simulator.CanUseAction(craft, step, Skills.AdvancedTouch));
@@ -217,7 +209,7 @@ namespace Artisan.CraftingLogic.Solvers
                 if (Simulator.CanUseAction(craft, step, Skills.BasicTouch) && CalculateNewQuality(craft, step, Skills.BasicTouch) >= craft.CraftQualityMax && step.Index == 1)
                     return new(Skills.BasicTouch);
 
-                if (Simulator.CanUseAction(craft, step, Skills.Manipulation) && step.ManipulationLeft == 0 /*&& !_manipulationUsed*/) return new(Skills.Manipulation);
+                if (Simulator.CanUseAction(craft, step, Skills.Manipulation) && step.ManipulationLeft == 0 && !_manipulationUsed) return new(Skills.Manipulation);
 
                 if (step.Progress < craft.CraftProgress - 1 && (!_qualityStarted || !Simulator.CanUseAction(craft, step, Skills.FinalAppraisal)))
                 {
@@ -231,7 +223,7 @@ namespace Artisan.CraftingLogic.Solvers
                         if (Simulator.CanUseAction(craft, step, Skills.WasteNot) && step.WasteNotLeft == 0 && !_wasteNotUsed) return new(Skills.WasteNot);
                         if (Simulator.CanUseAction(craft, step, Skills.FinalAppraisal) && step.FinalAppraisalLeft == 0 && CanFinishCraft(craft, step, act)) return new(Skills.FinalAppraisal, $"Synth is {act}");
                         if (!CanFinishCraft(craft, step, act))
-                            return new(act);
+                        return new(act);
                     }
                 }
 
@@ -289,7 +281,7 @@ namespace Artisan.CraftingLogic.Solvers
         {
             if (step.Condition is Condition.Good or Condition.Excellent) return false;
             if (_venereationUsed) return false;
-            if (step.FinalAppraisalLeft > 0) return false;
+            if (step.FinalAppraisalLeft > 0) return false;  
 
             var (result, next) = Simulator.Execute(craft, step with { Durability = 40 }, act, 0, 1);
             if (next.Progress >= craft.CraftProgress) return false;
@@ -323,8 +315,7 @@ namespace Artisan.CraftingLogic.Solvers
                 {
                     1 => craft.CraftQualityMin1,
                     2 => craft.CraftQualityMin2,
-                    3 => craft.CraftQualityMin3,
-                    _ => craft.CraftQualityMax
+                    _ => craft.CraftQualityMin3,
                 };
                 wantMoreQuality = step.Quality < maxQuality;
             }
@@ -332,7 +323,7 @@ namespace Artisan.CraftingLogic.Solvers
             return wantMoreQuality;
         }
 
-        private bool ShouldMend(CraftState craft, StepState step, bool goingForQuality)
+        private bool ShouldMend(CraftState craft, StepState step,bool goingForQuality)
         {
             var synthOption = BestSynthesis(craft, step);
             var touchOption = HighestLevelTouch(craft, step);
@@ -401,7 +392,7 @@ namespace Artisan.CraftingLogic.Solvers
             }
         }
 
-        public static int CalculateNewProgress(CraftState craft, StepState step, Skills action) => step.FinalAppraisalLeft > 0 ? Math.Min(step.Progress + Simulator.CalculateProgress(craft, step, action), craft.CraftProgress - 1) : step.Progress + Simulator.CalculateProgress(craft, step, action);
+        public static int CalculateNewProgress(CraftState craft, StepState step, Skills action) => step.FinalAppraisalLeft > 0 ? Math.Min(step.Progress + Simulator.CalculateProgress(craft, step, action), craft.CraftProgress -1) : step.Progress + Simulator.CalculateProgress(craft, step, action);
         public static int CalculateNewQuality(CraftState craft, StepState step, Skills action) => step.Quality + Simulator.CalculateQuality(craft, step, action);
         public static bool CanFinishCraft(CraftState craft, StepState step, Skills act) => CalculateNewProgress(craft, step, act) >= craft.CraftProgress;
 

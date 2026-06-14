@@ -5,12 +5,12 @@
   "Description": "The all-in-one crafting plugin.",
   "InternalName": "Artisan",
   "ApplicableVersion": "any",
-  "IconUrl": "https://s3.puni.sh/media/plugin/6/icon-3h8wd5b9qr.png",
+  "IconUrl": "https://love.puni.sh/resources/artisan.png",
   "Tags": [
     "crafting"
   ],
+  "Changelog": "Update Raphael Solver",
   "RepoUrl": "https://github.com/PunishXIV/Artisan",
-  "DalamudApiLevel": 15,
-  "DownloadLinkTesting": "https://love.puni.sh/plugins/Artisan/Testing/latest.zip",
-  "ChangeLog": "- Fix issue with graphical simulator not updating Raphael solutions correctly.\n- Try and prevent adjusting Raphael macros to skip Excellent GS/BB combo when durability would cause a fail."
+  "DalamudApiLevel": 12,
+  "DownloadLinkTesting": "https://love.puni.sh/plugins/Artisan/Testing/latest.zip"
 }

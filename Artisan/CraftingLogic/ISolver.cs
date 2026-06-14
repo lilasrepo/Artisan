@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using static Artisan.CraftingLogic.Solvers.ExpertSolverProfiles;
 using Skills = Artisan.RawInformation.Character.Skills;
 
 namespace Artisan.CraftingLogic;
@@ -16,8 +15,6 @@ public interface ISolverDefinition
     }
 
     public IEnumerable<Desc> Flavours(CraftState craft);
-
-    public IEnumerable<Desc> Flavours();
     public Solver Create(CraftState craft, int flavour);
 }
 
@@ -28,10 +25,6 @@ public abstract class Solver
 
     public virtual Solver Clone() => (Solver)MemberwiseClone(); // shallow copy by default
     public abstract Recommendation Solve(CraftState craft, StepState step); // note that this function potentially mutates state!
-    public virtual void SetActiveProfile(ExpertProfile activeProfile)
-    {
-        // unimplemented on base class
-    }
 }
 
 public interface ICraftValidator

@@ -1,11 +1,10 @@
-﻿using Artisan.Autocraft;
+using Artisan.Autocraft;
 using Artisan.CraftingLogic;
 using Artisan.CraftingLogic.Solvers;
 using Artisan.GameInterop;
 using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
 using Artisan.UI.ImGUI;
-using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility.Raii;
 using ECommons;
@@ -13,13 +12,16 @@ using ECommons.DalamudServices;
 using ECommons.ExcelServices;
 using ECommons.ImGuiMethods;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
+using ImGuiNET;
 using Lumina.Excel.Sheets;
 using Microsoft.CodeAnalysis;
+using OtterGui;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using static FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule;
+using Condition = Artisan.CraftingLogic.CraftData.Condition;
 
 namespace Artisan.UI
 {
@@ -32,6 +34,7 @@ namespace Artisan.UI
 
         // fields for simulator
         private static Random _simRngForSeeds = new();
+        private static int _simCurSeed;
         private static Random _simRngForSim = new();
         public static SolverRef? _selectedSolver;
         private static Solver? _simCurSolver;
@@ -53,12 +56,9 @@ namespace Artisan.UI
                 {
                     fixed (GearsetEntry?* gs = &SimGS)
                     {
-                        var entry = *gs;
-                        if (entry is not GearsetEntry val)
-                            return "";
-
+                        var val = gs->Value;
                         string name = val.NameString;
-                        bool materiaDiff = val.Items.ToArray().Any(x => x.Flags.HasFlag(GearsetItemFlag.MateriaDiffers));
+                        bool materiaDiff = gs->Value.Items.ToArray().Any(x => x.Flags.HasFlag(GearsetItemFlag.MateriaDiffers));
 
                         return $"{name} (ilvl {val.ItemLevel}){(materiaDiff ? " Warning: Detected Materia difference. Please update gearset" : "")}";
                     }
@@ -74,12 +74,12 @@ namespace Artisan.UI
 
         // data and other imgui things
         private static Dictionary<uint, List<IngredientLayouts>> ingredientLayouts = new();
+        private static float layoutWidth = 0;
         private static float widgetSize => P.Config.SimulatorActionSize;
         private static bool inManualMode = false;
         private static bool hoverMode = false;
         private static bool hoverStepAdded = false;
-        private static bool solverIsRaph => _selectedSolver?.Name.Contains("Raphael") == true;
-
+        private static string simGSName;
 
         private class IngredientLayouts
         {
@@ -99,51 +99,22 @@ namespace Artisan.UI
 
         public static void Draw()
         {
-            try
+            if (ImGui.BeginTabBar("Simulator Select"))
             {
-                if (ImGui.BeginTabBar("Simulator Select"))
+                if (ImGui.BeginTabItem("GUI Sim"))
                 {
-                    if (ImGui.BeginTabItem("GUI Sim"))
-                    {
-                        DrawGUISim();
-                        ImGui.EndTabItem();
-                    }
-
-                    if (ImGui.BeginTabItem("Mass Sim Mode"))
-                    {
-                        SimulatorUIVeynVersion.Draw();
-                        ImGui.EndTabItem();
-                    }
+                    DrawGUISim();
+                    ImGui.EndTabItem();
                 }
 
-                UpdateCraftForRaphael();
-            }
-            catch { }
-
-        }
-
-        private static void UpdateCraftForRaphael()
-        {
-            if (SelectedRecipe is not null)
-            {
-                _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
-                if (solverIsRaph == true && _selectedCraft is not null)
+                if (ImGui.BeginTabItem("Mass Sim Mode"))
                 {
-                    _selectedCraft.InitialQuality = startingQuality;
-                    if (RaphaelCache.HasSolution(_selectedCraft, out _))
-                    {
-                        try
-                        {
-                            var raph = new RaphaelSolverDefintion().Flavours(_selectedCraft).First();
-                            _selectedSolver = new(raph.Name, raph.CreateSolver(_selectedCraft));
-                        }
-                        catch(Exception ex)
-                        {
-                            ex.Log();
-                        }
-                    }
+                    SimulatorUIVeynVersion.Draw();
+                    ImGui.EndTabItem();
                 }
             }
+
+
         }
 
         private static void DrawGUISim()
@@ -152,7 +123,7 @@ namespace Artisan.UI
             ImGui.Separator();
             DrawRecipeSelector();
 
-            if (SelectedRecipe! != null)
+            if (SelectedRecipe != null)
             {
                 DrawIngredientLayout();
 
@@ -161,7 +132,7 @@ namespace Artisan.UI
                 DrawGearSetDropdown();
 
                 if (!CustomStatMode)
-                    DrawConsumablesDropdown();
+                DrawConsumablesDropdown();
 
                 DrawStatInfo();
 
@@ -202,7 +173,7 @@ namespace Artisan.UI
             {
                 if (SimGS != null)
                 {
-                    _selectedCraft ??= Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
+                    _selectedCraft ??= Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId, SelectedRecipe.Value);
                     if (_simCurSteps.Count == 0)
                     {
                         var initial = Simulator.CreateInitial(_selectedCraft, startingQuality);
@@ -231,7 +202,7 @@ namespace Artisan.UI
             {
                 try
                 {
-                    _selectedCraft ??= Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
+                    _selectedCraft ??= Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId, SelectedRecipe.Value);
                     if (_simCurSteps.Count == 0)
                     {
                         var initial = Simulator.CreateInitial(_selectedCraft, startingQuality);
@@ -251,7 +222,7 @@ namespace Artisan.UI
                     hoverMode = false;
                     ImGui.EndChild();
                 }
-                catch (Exception ex)
+                catch (Exception ex) 
                 {
                     ex.Log();
                 }
@@ -283,10 +254,10 @@ namespace Artisan.UI
                     newMacro.Name = macroName;
                     P.Config.MacroSolverConfig.AddNewMacro(newMacro);
 
-                    var config = P.Config.RecipeConfigs.GetValueOrDefault(SelectedRecipe!.Value.RowId) ?? new();
+                    var config = P.Config.RecipeConfigs.GetValueOrDefault(SelectedRecipe.Value.RowId) ?? new();
                     config.SolverType = typeof(MacroSolverDefinition).FullName!;
                     config.SolverFlavour = newMacro.ID;
-                    P.Config.RecipeConfigs[SelectedRecipe!.Value.RowId] = config;
+                    P.Config.RecipeConfigs[SelectedRecipe.Value.RowId] = config;
                     P.Config.Save();
                 }
 
@@ -312,8 +283,8 @@ namespace Artisan.UI
 
             if (_selectedCraft != null && _simCurSteps != null && _simCurSteps.Count > 0)
             {
-                ImGui.Columns(16, border: false);
-                var job = Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId);
+                ImGui.Columns(16, null, false);
+                var job = Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId;
                 for (int i = 0; i < _simCurSteps.Count; i++)
                 {
                     if (_simCurSteps.Count == 1)
@@ -327,7 +298,7 @@ namespace Artisan.UI
                         var currentAction = _simCurSteps[i + 1].step.PrevComboAction;
                         var step = _simCurSteps[i + 1].step;
                         var x = ImGui.GetCursorPosX();
-                        ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.Handle, new Vector2(widgetSize), new Vector2(), new Vector2(1, 1), highlightLast ? new Vector4(0f, 0.75f, 0.25f, 1f) : new Vector4(1f, 1f, 1f, 1f));
+                        ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.ImGuiHandle, new Vector2(widgetSize), new Vector2(), new Vector2(1, 1), highlightLast ? new Vector4(0f, 0.75f, 0.25f, 1f) : new Vector4(1f, 1f, 1f, 1f));
                         if (ImGui.IsItemHovered())
                         {
                             ImGui.BeginTooltip();
@@ -362,7 +333,7 @@ namespace Artisan.UI
 
         public static void ResetSim()
         {
-            _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
+            _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId, SelectedRecipe.Value);
             SimActionIDs.Clear();
             _simCurSteps.Clear();
             var initial = Simulator.CreateInitial(_selectedCraft, startingQuality);
@@ -375,7 +346,7 @@ namespace Artisan.UI
         {
             if (!inManualMode) return;
             _simCurSteps.Clear();
-            _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
+            _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId, SelectedRecipe.Value);
             var initial = Simulator.CreateInitial(_selectedCraft, startingQuality);
             _simCurSteps.Add((initial, ""));
             for (int i = 0; i < SimActionIDs.Count; i++)
@@ -397,7 +368,7 @@ namespace Artisan.UI
         {
             Vector2 childSize = new Vector2((widgetSize + ImGui.GetStyle().ItemSpacing.X) * itemCount + ImGui.GetStyle().WindowPadding.X, (ImGui.GetTextLineHeightWithSpacing() + (widgetSize + ImGui.GetStyle().WindowPadding.Y) + 12f));
             ImGui.BeginChild(label, childSize, true);
-            ImGuiEx.LineCentered($"{label}", () => ImGuiEx.TextUnderlined($"{label}"));
+            ImGuiEx.ImGuiLineCentered($"{label}", () => ImGuiEx.TextUnderlined($"{label}"));
             func();
             ImGui.EndChild();
         }
@@ -466,9 +437,9 @@ namespace Artisan.UI
 
         private static void DrawActionWidget(Skills action)
         {
-            var icon = P.Icons.TryLoadIconAsync(action.IconOfAction(Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId))).Result;
-            ImGui.Image(icon.Handle, new Vector2(widgetSize));
-            if (_selectedCraft is null) return;
+            var icon = P.Icons.TryLoadIconAsync(action.IconOfAction(Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId)).Result;
+            ImGui.Image(icon.ImGuiHandle, new Vector2(widgetSize));
+
             var nextstep = Simulator.Execute(_selectedCraft, _simCurSteps.Last().step, action, 0, 1);
 
             if (ImGui.IsItemHovered())
@@ -521,7 +492,7 @@ namespace Artisan.UI
                 {
                     if (_simCurSteps.Count == 0)
                     {
-                        _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
+                        _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId, SelectedRecipe.Value);
                         var initial = Simulator.CreateInitial(_selectedCraft, startingQuality);
                         _simCurSteps.Add((initial, ""));
                         var step = Simulator.Execute(_selectedCraft, initial, action, 0, 1);
@@ -575,51 +546,20 @@ namespace Artisan.UI
 
         private static void DrawSolverActions()
         {
-            if (_selectedCraft != null && _selectedSolver != null && (SimGS != null || CustomStatMode))
+            if (_selectedSolver != null && (SimGS != null || CustomStatMode))
             {
-                var raphConfig = RaphaelCache.GetRaphConfig(_selectedCraft, true);
-                if (solverIsRaph)
-                {
-                    if (!RaphaelCache.HasSolution(_selectedCraft, raphConfig, out var _))
-                    {
-                        var key = RaphaelCache.GetOptions(_selectedCraft, raphConfig);
-                        if (!RaphaelCache.Tasks.ContainsKey(key))
-                        {
-                            if (ImGui.Button("Generate Solution"))
-                            {
-                                if (RaphaelCache.CLIExists())
-                                {
-                                    Svc.Log.Debug("Raphael set as config but has no solution, generating now...");
-                                    RaphaelCache.Build(_selectedCraft, raphConfig);
-                                    return; // wait for solution to be ready
-                                }
-                            }
-                        }
-                        else
-                        {
-                            ImGui.Text($"Generating solution, please wait.");
-                            if (ImGui.Button("Cancel Raphael Generation"))
-                            {
-                                RaphaelCache.Tasks.TryRemove(key, out var task);
-                                task.Cancellation.Cancel();
-                            }
-                        }
-                        ResetSim();
-                        return;
-                    }
-                }
                 ImGuiEx.SetNextItemFullWidth();
                 if (ImGui.Button($"Run Simulated Solver"))
                 {
                     _simCurSolver = _selectedSolver?.Clone();
                     ResetSim();
-                    InitDefaultTransitionProbabilities(_selectedCraft, SelectedRecipe!.Value);
+                    InitDefaultTransitionProbabilities(_selectedCraft, SelectedRecipe.Value);
                     while (SolveNextSimulator(_selectedCraft)) ;
                 }
                 ImGui.SameLine();
                 if (ImGui.Checkbox($"Assume Normal Condition only", ref assumeNormalStatus))
                 {
-                    _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
+                    _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId, SelectedRecipe.Value);
                     _simCurSteps.Clear();
                 }
 
@@ -628,15 +568,15 @@ namespace Artisan.UI
 
                 if (_simCurSolver != null && _simCurSteps.Count > 0)
                 {
-                    ImGui.Columns(Math.Min(16, _simCurSteps.Count), border: false);
-                    var job = Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId);
+                    ImGui.Columns(Math.Min(16, _simCurSteps.Count), null, false);
+                    var job = Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId;
                     for (int i = 0; i < _simCurSteps.Count; i++)
                     {
                         if (i + 1 < _simCurSteps.Count)
                         {
                             var currentAction = _simCurSteps[i + 1].step.PrevComboAction;
                             var comment = _simCurSteps[i].comment;
-                            ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.Handle, new Vector2(widgetSize));
+                            ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.ImGuiHandle, new Vector2(widgetSize));
                             var step = _simCurSteps[i + 1].step;
                             if (ImGui.IsItemHovered())
                             {
@@ -664,7 +604,7 @@ namespace Artisan.UI
         private static void DrawSimResult()
         {
             if (_simCurSteps.Count == 1) return;
-            if (_selectedCraft is null) return;
+
             var status = Simulator.Status(_selectedCraft, _simCurSteps.Last().step);
             Vector4 successColor = status switch
             {
@@ -677,9 +617,7 @@ namespace Artisan.UI
                 Simulator.CraftStatus.SucceededMaxQuality => ImGuiColors.ParsedGreen,
                 Simulator.CraftStatus.SucceededSomeQuality => ImGuiColors.DalamudOrange,
                 Simulator.CraftStatus.SucceededNoQualityReq => ImGuiColors.ParsedGreen,
-                Simulator.CraftStatus.SucceededMetQualityReq => ImGuiColors.ParsedGreen,
-                Simulator.CraftStatus.Count => ImGuiColors.ParsedBlue,
-                _ => ImGuiColors.ParsedBlue
+                _ => throw new NotImplementedException(),
             };
 
             float qualityPercent = _simCurSteps.Last().step.Quality / _selectedCraft.CraftQualityMax;
@@ -688,7 +626,7 @@ namespace Artisan.UI
 
             ImGui.PushStyleColor(ImGuiCol.Text, successColor);
             ImGuiEx.LineCentered($"SimResults", () => ImGuiEx.TextUnderlined($"Simulator Result - {status.ToOutputString()}"));
-            ImGui.Columns(4, border: false);
+            ImGui.Columns(4, null, false);
             ImGuiEx.TextCentered($"Quality (IQ: {_simCurSteps.Last().step.IQStacks})");
             ImGuiEx.SetNextItemFullWidth();
             DrawProgress(_simCurSteps.Last().step.Quality, _selectedCraft.CraftQualityMax);
@@ -742,14 +680,23 @@ namespace Artisan.UI
             if (assumeNormalStatus)
                 return;
 
-            if (recipe.IsExpert)
+            if (recipe.IsExpert) //Todo update with Lumina fix
             {
-                // all sets of potential conditions (unique ConditionsFlag values) have their own probabilities
-                var recipeConditionsFlag = recipe.RecipeLevelTable.Value.ConditionsFlag;
-                if (CraftState.ExpertConditionOdds.ContainsKey(recipeConditionsFlag))
-                    craft.CraftConditionProbabilities = CraftState.ExpertConditionOdds[recipeConditionsFlag];
-                else
-                    craft.CraftConditionProbabilities = CraftState.ExpertConditionOdds[0];
+                // TODO: this is all very unconfirmed, we really need a process to gather this data
+                var potentialConditions = recipe.RecipeLevelTable.Value.ConditionsFlag;
+                var manyConditions = (potentialConditions & 0x1F0) == 0x1F0; // it seems that when all conditions are available, each one has slightly lower probability?
+                var haveGoodOmen = (potentialConditions & (1 << (int)Condition.GoodOmen)) != 0; // it seems that when good omen is possible, straight good is quite a bit rarer
+                craft.CraftConditionProbabilities = new float[(int)Condition.Unknown];
+                craft.CraftConditionProbabilities[(int)Condition.Good] = haveGoodOmen ? 0.04f : 0.12f;
+                craft.CraftConditionProbabilities[(int)Condition.Centered] = manyConditions ? 0.12f : 0.15f;
+                craft.CraftConditionProbabilities[(int)Condition.Sturdy] = manyConditions ? 0.12f : 0.15f;
+                craft.CraftConditionProbabilities[(int)Condition.Pliant] = manyConditions ? 0.10f : 0.12f;
+                craft.CraftConditionProbabilities[(int)Condition.Malleable] = manyConditions ? 0.10f : 0.12f;
+                craft.CraftConditionProbabilities[(int)Condition.Primed] = manyConditions ? 0.12f : 0.15f;
+                craft.CraftConditionProbabilities[(int)Condition.GoodOmen] = 0.12f;
+                for (Condition i = Condition.Good; i < Condition.Unknown; ++i)
+                    if ((potentialConditions & (1 << (int)i)) == 0)
+                        craft.CraftConditionProbabilities[(int)i] = 0;
             }
             else
             {
@@ -766,7 +713,7 @@ namespace Artisan.UI
             if (!solverCombo)
                 return;
 
-            _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP.Add(SelectedRecipe!.Value.CraftType.RowId), SelectedRecipe!.Value);
+            _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId, SelectedRecipe.Value);
             foreach (var opt in CraftingProcessor.GetAvailableSolversForRecipe(_selectedCraft, false))
             {
                 if (opt == default) continue;
@@ -774,6 +721,7 @@ namespace Artisan.UI
                 if (selected)
                 {
                     _selectedSolver = new(opt.Name, opt.CreateSolver(_selectedCraft));
+
                 }
             }
         }
@@ -839,9 +787,8 @@ namespace Artisan.UI
             foreach (var medicine in ConsumableChecker.GetPots().OrderBy(x => x.Id))
             {
                 var consumable = ConsumableChecker.GetItemConsumableProperties(LuminaSheets.ItemSheet[medicine.Id], false);
-                if (consumable.HasValue)
-                    if (consumable.Value.Params.Any(x => x.BaseParam.RowId is 69 or 68))
-                        continue;
+                if (consumable.Value.Params.Any(x => x.BaseParam.RowId is 69 or 68))
+                    continue;
 
                 var consumableStats = new ConsumableStats(medicine.Id, false);
                 ConsumableChoice choice = new ConsumableChoice() { Id = medicine.Id, Stats = consumableStats };
@@ -880,7 +827,7 @@ namespace Artisan.UI
                 var controlBoost = (SimFood == null ? 0 : SimFood.Stats.Stats.FirstOrDefault(x => x.Param == 71).Effective(gsStats.Control)) + (SimMedicine == null ? 0 : SimMedicine.Stats.Stats.FirstOrDefault(x => x.Param == 71).Effective(gsStats.Control));
                 var cpBoost = (SimFood == null ? 0 : SimFood.Stats.Stats.FirstOrDefault(x => x.Param == 11).Effective(gsStats.CP)) + (SimMedicine == null ? 0 : SimMedicine.Stats.Stats.FirstOrDefault(x => x.Param == 11).Effective(gsStats.CP));
 
-                ImGui.Columns(3, border: false);
+                ImGui.Columns(3, null, false);
                 ImGui.TextWrapped($"Craftsmanship: {gsStats.Craftsmanship + craftsmanshipBoost} ({gsStats.Craftsmanship} + {craftsmanshipBoost})");
                 ImGui.NextColumn();
                 ImGui.TextWrapped($"Control: {gsStats.Control + controlBoost} ({gsStats.Control} + {controlBoost})");
@@ -912,7 +859,7 @@ namespace Artisan.UI
         {
             if (!CustomStatMode)
             {
-                if (ImGui.Button($"Switch to Custom Stat Mode", new(ImGui.GetContentRegionAvail().X, 0)))
+                if (ImGui.Button($"Switch to Custom Stat Mode", new (ImGui.GetContentRegionAvail().X, 0)))
                     CustomStatMode = true;
             }
             else
@@ -923,17 +870,17 @@ namespace Artisan.UI
 
             if (!CustomStatMode)
             {
-                var validGS = Instance()->Entries.ToArray().Count(x => Instance()->IsValidGearset(x.Id) && x.ClassJob == SelectedRecipe!?.CraftType.RowId + 8);
+                var validGS = RaptureGearsetModule.Instance()->Entries.ToArray().Count(x => RaptureGearsetModule.Instance()->IsValidGearset(x.Id) && x.ClassJob == SelectedRecipe?.CraftType.RowId + 8);
 
                 if (validGS == 0)
                 {
-                    ImGuiEx.Text($"Please add a gearset for {LuminaSheets.ClassJobSheet[SelectedRecipe!.Value.CraftType.RowId + 8].Abbreviation}");
+                    ImGuiEx.Text($"Please add a gearset for {LuminaSheets.ClassJobSheet[SelectedRecipe.Value.CraftType.RowId + 8].Abbreviation}");
                     SimGS = null;
                     return;
                 }
                 if (validGS == 1)
                 {
-                    var gs = Instance()->Entries.ToArray().First(x => Instance()->IsValidGearset(x.Id) && x.ClassJob == SelectedRecipe!?.CraftType.RowId + 8);
+                    var gs = RaptureGearsetModule.Instance()->Entries.ToArray().First(x => RaptureGearsetModule.Instance()->IsValidGearset(x.Id) && x.ClassJob == SelectedRecipe?.CraftType.RowId + 8);
                     SimGS = gs;
                     string name = gs.NameString;
                     bool materiaDiff = gs.Items.ToArray().Any(x => x.Flags.HasFlag(GearsetItemFlag.MateriaDiffers));
@@ -957,10 +904,10 @@ namespace Artisan.UI
                     SimGS = null;
                 }
 
-                foreach (var gs in Instance()->Entries)
+                foreach (var gs in RaptureGearsetModule.Instance()->Entries)
                 {
-                    if (!Instance()->IsValidGearset(gs.Id)) continue;
-                    if (gs.ClassJob != SelectedRecipe!?.CraftType.RowId + 8)
+                    if (!RaptureGearsetModule.Instance()->IsValidGearset(gs.Id)) continue;
+                    if (gs.ClassJob != SelectedRecipe?.CraftType.RowId + 8)
                         continue;
 
                     string name = gs.NameString;
@@ -977,7 +924,7 @@ namespace Artisan.UI
             {
                 SimGS = null;
 
-                ImGui.Columns(4, border: false);
+                ImGui.Columns(4, null, false);
                 ImGUIMethods.InputIntBound($"Level:", ref gsLevel, 1, 100, true);
                 ImGui.NextColumn();
                 ImGUIMethods.InputIntBound($"Craftsmanship:", ref gsCraftsmanship, 1, 99999, true);
@@ -986,7 +933,7 @@ namespace Artisan.UI
                 ImGui.NextColumn();
                 ImGUIMethods.InputIntBound($"CP:", ref gsCP, 1, 99999, true);
                 ImGui.NextColumn();
-                ImGui.Columns(3, border: false);
+                ImGui.Columns(3, null, false);
                 ImGUIMethods.FlippedCheckbox($"Splendorous/Cosmic:", ref gsSplend);
                 ImGui.NextColumn();
                 ImGUIMethods.FlippedCheckbox($"Specialist:", ref gsSpecialist);
@@ -1002,7 +949,7 @@ namespace Artisan.UI
                     Specialist = gsSpecialist,
                     SplendorCosmic = gsSplend,
                     Manipulation = gsManip,
-                    Level = gsLevel,
+                    Level = gsLevel,    
                 };
 
                 ResolveSteps();
@@ -1011,20 +958,20 @@ namespace Artisan.UI
 
         private static void DrawRecipeInfo()
         {
-            if (ingredientLayouts.TryGetValue(SelectedRecipe!.Value.RowId, out var layouts))
+            if (ingredientLayouts.TryGetValue(SelectedRecipe.Value.RowId, out var layouts))
             {
-                startingQuality = Calculations.GetStartingQuality(SelectedRecipe!.Value, layouts.OrderBy(x => x.Idx).Select(x => x.HQ).ToArray());
-                var max = Calculations.RecipeMaxQuality(SelectedRecipe!.Value);
+                startingQuality = Calculations.GetStartingQuality(SelectedRecipe.Value, layouts.OrderBy(x => x.Idx).Select(x => x.HQ).ToArray());
+                var max = Calculations.RecipeMaxQuality(SelectedRecipe.Value);
                 var percentage = Math.Clamp((double)startingQuality / max * 100, 0, 100);
                 var hqChance = Calculations.GetHQChance(percentage);
 
-                ImGuiEx.LineCentered("StartingQuality", () =>
+                ImGuiEx.ImGuiLineCentered("StartingQuality", () =>
                 {
                     ImGuiEx.Text($"Starting Quality: {startingQuality} / {max} ({hqChance}% HQ chance, {percentage.ToString("N0")}% quality)");
                 });
-                ImGuiEx.LineCentered("ExpertInfo", () =>
+                ImGuiEx.ImGuiLineCentered("ExpertInfo", () =>
                 {
-                    ImGuiEx.Text($"{(SelectedRecipe!.Value.IsExpert ? "Expert Recipe" : SelectedRecipe!.Value.SecretRecipeBook.RowId > 0 ? "Master Recipe" : "Normal Recipe")}");
+                    ImGuiEx.Text($"{(SelectedRecipe.Value.IsExpert ? "Expert Recipe" : SelectedRecipe.Value.SecretRecipeBook.RowId > 0 ? "Master Recipe" : "Normal Recipe")}");
                 });
 
             }
@@ -1034,16 +981,16 @@ namespace Artisan.UI
         private static void DrawIngredientLayout()
         {
             bool hasHQ = false;
-            foreach (var i in SelectedRecipe!.Value.Ingredients().Where(x => x.Amount > 0))
+            foreach (var i in SelectedRecipe.Value.Ingredients().Where(x => x.Amount > 0))
             {
                 if (LuminaSheets.ItemSheet[i.Item.RowId].CanBeHq)
                     hasHQ = true;
             }
             using var group = ImRaii.Group();
-            if (!group.Alive)
+            if (!group)
                 return;
 
-            ImGuiEx.LineCentered("###LayoutIngredients", () => ImGuiEx.TextUnderlined("Ingredient Layouts"));
+            ImGuiEx.ImGuiLineCentered("###LayoutIngredients", () => ImGuiEx.TextUnderlined("Ingredient Layouts"));
             using var table = ImRaii.Table("###SimulatorRecipeIngredients", 3, ImGuiTableFlags.Borders | ImGuiTableFlags.NoHostExtendX);
             if (!table)
                 return;
@@ -1055,11 +1002,11 @@ namespace Artisan.UI
             ImGui.TableHeadersRow();
 
             var idx = 0;
-            foreach (var i in SelectedRecipe!.Value.Ingredients().Where(x => x.Amount > 0))
+            foreach (var i in SelectedRecipe.Value.Ingredients().Where(x => x.Amount > 0))
             {
-                if (ingredientLayouts.TryGetValue(SelectedRecipe!.Value.RowId, out var layouts))
+                if (ingredientLayouts.TryGetValue(SelectedRecipe.Value.RowId, out var layouts))
                 {
-                    if (layouts.TryGetFirst(x => x.ID == i.Item.RowId, out var layout))
+                    if (layouts.FindFirst(x => x.ID == i.Item.RowId, out var layout))
                     {
                         ImGui.TableNextRow();
                         var item = LuminaSheets.ItemSheet[i.Item.RowId];
@@ -1121,7 +1068,7 @@ namespace Artisan.UI
                 }
                 else
                 {
-                    ingredientLayouts.TryAdd(SelectedRecipe!.Value.RowId, new List<IngredientLayouts>());
+                    ingredientLayouts.TryAdd(SelectedRecipe.Value.RowId, new List<IngredientLayouts>());
                 }
                 idx++;
             }
@@ -1131,7 +1078,7 @@ namespace Artisan.UI
         {
             var preview = SelectedRecipe is null
                                       ? string.Empty
-                                      : $"{SelectedRecipe!?.ItemResult.Value.Name.ToDalamudString().ToString()} ({LuminaSheets.ClassJobSheet[SelectedRecipe!.Value.CraftType.RowId + 8].Abbreviation.ToString()})";
+                                      : $"{SelectedRecipe?.ItemResult.Value.Name.ToDalamudString().ToString()} ({LuminaSheets.ClassJobSheet[SelectedRecipe.Value.CraftType.RowId + 8].Abbreviation.ToString()})";
 
             ImGuiEx.Text($"Select Recipe");
             ImGui.SameLine(120f.Scale());
@@ -1153,7 +1100,7 @@ namespace Artisan.UI
                     foreach (var recipe in LuminaSheets.RecipeSheet.Values.Where(x => x.ItemResult.Value.Name.ToDalamudString().ToString().Contains(Search, StringComparison.CurrentCultureIgnoreCase)))
                     {
                         ImGui.PushID($"###simRecipe{recipe.RowId}");
-                        var selected = ImGui.Selectable($"{recipe.ItemResult.Value.Name.ToDalamudString().ToString()} ({LuminaSheets.ClassJobSheet[recipe.CraftType.RowId + 8].Abbreviation.ToString()} {recipe.RecipeLevelTable.Value.ClassJobLevel})", recipe.RowId == SelectedRecipe!?.RowId);
+                        var selected = ImGui.Selectable($"{recipe.ItemResult.Value.Name.ToDalamudString().ToString()} ({LuminaSheets.ClassJobSheet[recipe.CraftType.RowId + 8].Abbreviation.ToString()} {recipe.RecipeLevelTable.Value.ClassJobLevel})", recipe.RowId == SelectedRecipe?.RowId);
 
                         if (selected)
                         {

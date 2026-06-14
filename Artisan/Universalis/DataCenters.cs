@@ -46,7 +46,6 @@ namespace Artisan.Universalis
         public static string GetDataCenterName(uint world)
         {
             var dc = GetDataCenterByWorld(world);
-            if (dc is null) return "";
             if (Elemental.ContainsAll(dc))
                 return "Elemental";
             if (Gaia.ContainsAll(dc))
@@ -86,7 +85,7 @@ namespace Artisan.Universalis
             var name = Svc.Data.GetExcelSheet<World>()?.FirstOrDefault(x => x.RowId == world).Name;
 
             if (name != null)
-                return name.Value.GetText();
+                return name.Value.ExtractText();
 
             return null;
         }

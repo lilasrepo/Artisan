@@ -1,9 +1,6 @@
 ﻿using Artisan.RawInformation.Character;
 using ECommons;
 using ECommons.DalamudServices;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
@@ -70,7 +67,7 @@ namespace Artisan.RawInformation
                 .ToDictionary(x => x.RowId, x => x);
 
             // Preprocess the recipe data into a lookup table (ILookup) for faster access.
-            recipeLookup = RecipeSheet.Values
+            recipeLookup = LuminaSheets.RecipeSheet.Values
                 .ToLookup(x => x.ItemResult.Value.Name.ToDalamudString().ToString());
 
             GatheringItemSheet = Svc.Data?.GetExcelSheet<GatheringItem>()?
@@ -120,11 +117,11 @@ namespace Artisan.RawInformation
                        .ToDictionary(i => i.RowId, i => i);
 
             ENPCResidentSheet = Svc.Data?.GetExcelSheet<ENpcResident>()?
-                       .Where(x => x.Singular.GetText().Length > 0)
+                       .Where(x => x.Singular.ExtractText().Length > 0)
                        .ToDictionary(i => i.RowId, i => i);
 
             QuestSheet = Svc.Data?.GetExcelSheet<Quest>()?
-                        .Where(x => x.Id.GetText().Length > 0)
+                        .Where(x => x.Id.ExtractText().Length > 0)
                         .ToDictionary(i => i.RowId, i => i);
 
             WorkshopPartSheet = Svc.Data?.GetExcelSheet<CompanyCraftPart>()?
@@ -199,7 +196,7 @@ namespace Artisan.RawInformation
         {
             if (id == 0) return "";
 
-            return LuminaSheets.ItemSheet[id].Name.GetText();
+            return LuminaSheets.ItemSheet[id].Name.ExtractText();
         }
 
         public static string NameOfRecipe(this uint id)
@@ -221,36 +218,34 @@ namespace Artisan.RawInformation
                 var digits = id.ToString().Length;
                 if (LuminaSheets.QuestSheet!.Any(x => Convert.ToInt16(x.Value.Id.ToString().GetLast(digits)) == id))
                 {
-                    return LuminaSheets.QuestSheet!.First(x => Convert.ToInt16(x.Value.Id.ToString().GetLast(digits)) == id).Value.Name.GetText().Replace("", "").Trim();
+                    return LuminaSheets.QuestSheet!.First(x => Convert.ToInt16(x.Value.Id.ToString().GetLast(digits)) == id).Value.Name.ExtractText().Replace("", "").Trim();
                 }
             }
             return "";
 
         }
 
-        public static bool MissionHasExtraAction(this Recipe recipe, out uint action)
+        public static bool MissionHasMaterialMiracle(this Recipe recipe)
         {
-            action = 0;
             try
             {
+
                 Svc.Data.GameData.Options.PanicOnSheetChecksumMismatch = false;
                 var id = recipe.RowId;
                 //First, find the MissionRecipe with our recipe
-                var missionRec = Svc.Data.GetExcelSheet<WKSMissionRecipe>().FirstOrDefault(missionRec => missionRec.Recipe.Any(recipe => recipe.RowId == id));
+                var missionRec = Svc.Data.GetExcelSheet<WKSMissionRecipe>().FirstOrDefault(missionRec => missionRec.Recipe.Any(recipe =>  recipe.RowId == id));
                 //Bail if there's no MissionRecipe (this isn't a Cosmic Craft)
                 if (missionRec.RowId == 0)
                     return false;
-
+                
                 //Next, find the MissionUnit that has our MissionRecipe row
-                var missionUnit = Svc.Data.GetExcelSheet<WKSMissionUnit>().First(missionUnit => missionUnit.WKSMissionRecipe.RowId == (ushort)missionRec.RowId);
+                var missionUnit = Svc.Data.GetExcelSheet<WKSMissionUnit>().First(missionUnit => missionUnit.WKSMissionRecipe == (ushort)missionRec.RowId);
 
                 //Get the MissionToDo from the MissionUnit
-                var missionToDo = Svc.Data.GetExcelSheet<WKSMissionToDo>().GetRow(missionUnit.MissionToDo[0].RowId);
+                var missionToDo = Svc.Data.GetExcelSheet<WKSMissionToDo>().GetRow(missionUnit.Unknown7);
 
                 //Svc.Log.Verbose($"{id} -> {missionRec.RowId} -> {missionUnit.RowId} -> {missionToDo.RowId} -> {missionToDo.Unknown0}");
-                action = missionToDo.TemporaryAction.RowId;
-
-                return true;
+                return missionToDo.Unknown0 == (uint)Skills.MaterialMiracle;
             }
             catch (Exception e)
             {
@@ -258,14 +253,5 @@ namespace Artisan.RawInformation
                 return false;
             }
         }
-
-        extension(MirageStoreSetItem row)
-        {
-            public RowRef<Item> Set => new(row.ExcelPage.Module, row.RowId, row.ExcelPage.Language);
-            public unsafe Collection<RowRef<Item>> Items => new(row.ExcelPage, parentOffset: row.RowOffset, offset: row.RowOffset, &ItemCtor, size: 11);
-        }
-
-        private static RowRef<Item> ItemCtor(ExcelPage page, uint parentOffset, uint offset, uint i)
-            => new(page.Module, page.ReadUInt32(offset + i * 4), page.Language);
     }
 }

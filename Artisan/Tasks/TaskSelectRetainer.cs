@@ -41,7 +41,7 @@ internal unsafe static class RetainerListHandlers
         string retainerName = "";
         for (uint i = 0; i < 10; i++)
         {
-            var retainer = RetainerManager.Instance()->GetRetainerBySortedIndex(i);
+            var retainer = FFXIVClientStructs.FFXIV.Client.Game.RetainerManager.Instance()->GetRetainerBySortedIndex(i);
             if (retainer == null) continue;
 
             if (retainer->RetainerId == id)
@@ -90,7 +90,7 @@ internal unsafe static class RetainerListHandlers
                 {
                     new()
                     {
-                        Type = AtkValueType.Int,
+                        Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Int,
                         Int = -1
                     }
                 };
@@ -104,7 +104,7 @@ internal unsafe static class RetainerListHandlers
 
     internal static bool TryGetCurrentRetainer(out string name)
     {
-        if (Svc.Condition[ConditionFlag.OccupiedSummoningBell] && ProperOnLogin.PlayerPresent && Svc.Objects.Where(x => x.ObjectKind == ObjectKind.Retainer).OrderBy(x => Vector3.Distance(Svc.Objects.LocalPlayer.Position, x.Position)).TryGetFirst(out var obj))
+        if (Svc.Condition[ConditionFlag.OccupiedSummoningBell] && ProperOnLogin.PlayerPresent && Svc.Objects.Where(x => x.ObjectKind == ObjectKind.Retainer).OrderBy(x => Vector3.Distance(Svc.ClientState.LocalPlayer.Position, x.Position)).TryGetFirst(out var obj))
         {
             name = obj.Name.ToString();
             return true;
@@ -114,6 +114,106 @@ internal unsafe static class RetainerListHandlers
     }
 }
 
+public unsafe class RetainerManager
+{
+    private static StaticRetainerContainer? _address;
+    private static RetainerContainer* _container;
+
+    public RetainerManager(ISigScanner sigScanner)
+    {
+        if (_address != null)
+            return;
+
+        _address ??= new StaticRetainerContainer(sigScanner);
+        _container = (RetainerContainer*)_address.Address;
+    }
+
+    public bool Ready
+        => _container != null && _container->Ready == 1;
+
+    public int Count
+        => Ready ? _container->RetainerCount : 0;
+
+    public SeRetainer Retainer(int which)
+        => which < Count
+            ? ((SeRetainer*)_container->Retainers)[which]
+            : throw new ArgumentOutOfRangeException($"Invalid retainer {which} requested, only {Count} available.");
+    public void* RetainerAddress(int which)
+        => which < Count
+            ? &((SeRetainer*)_container->Retainers)[which]
+            : throw new ArgumentOutOfRangeException($"Invalid retainer {which} requested, only {Count} available.");
+}
+
+public sealed class StaticRetainerContainer : SeAddressBase
+{
+    public StaticRetainerContainer(ISigScanner sigScanner)
+        : base(sigScanner, "48 8B E9 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 85 C0 74 4E")
+    { }
+}
+
+public class SeAddressBase
+{
+    public readonly IntPtr Address;
+
+    public SeAddressBase(ISigScanner sigScanner, string signature, int offset = 0)
+    {
+        return;
+        Address = sigScanner.GetStaticAddressFromSig(signature);
+        if (Address != IntPtr.Zero)
+            Address += offset;
+        var baseOffset = (ulong)Address.ToInt64() - (ulong)sigScanner.Module.BaseAddress.ToInt64();
+    }
+}
+
+[StructLayout(LayoutKind.Sequential, Size = SeRetainer.Size * 10 + 12)]
+public unsafe struct RetainerContainer
+{
+    public fixed byte Retainers[SeRetainer.Size * 10];
+    public fixed byte DisplayOrder[10];
+    public byte Ready;
+    public byte RetainerCount;
+}
+
+[StructLayout(LayoutKind.Explicit, Size = Size)]
+public unsafe struct SeRetainer
+{
+    public const int Size = 0x48;
+
+    [FieldOffset(0x00)]
+    public ulong RetainerID;
+
+    [FieldOffset(0x08)]
+    private fixed byte _name[0x20];
+
+    [FieldOffset(0x29)]
+    public byte ClassJob;
+
+    [FieldOffset(0x2A)]
+    public byte Level;
+
+    [FieldOffset(0x2C)]
+    public uint Gil;
+
+    [FieldOffset(0x38)]
+    public uint VentureID;
+
+    [FieldOffset(0x3C)]
+    public uint VentureCompleteTimeStamp;
+
+    public bool Available
+        => ClassJob != 0;
+
+    public SeString Name
+    {
+        get
+        {
+            fixed (byte* name = _name)
+            {
+                return MemoryHelper.ReadSeStringNullTerminated((IntPtr)name);
+            }
+        }
+    }
+}
 
 internal unsafe static class RetainerHandlers
 {
@@ -157,8 +257,8 @@ internal unsafe static class RetainerHandlers
                     quantity = item->Quantity;
                     Svc.Log.Debug($"Found item? {item->Quantity}");
                     var ag = AgentInventoryContext.Instance();
-                    ag->OpenForItemSlot(inv, i, 0, AgentModule.Instance()->GetAgentByInternalId(AgentId.Retainer)->GetAddonId());
-                    var contextMenu = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextMenu", 1).Address;
+                    ag->OpenForItemSlot(inv, i, AgentModule.Instance()->GetAgentByInternalId(AgentId.Retainer)->GetAddonId());
+                    var contextMenu = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextMenu", 1);
                     var contextAgent = AgentInventoryContext.Instance();
                     var indexOfRetrieveAll = -1;
                     var indexOfRetrieveQuantity = -1;
@@ -166,7 +266,7 @@ internal unsafe static class RetainerHandlers
                     int looper = 0;
                     foreach (var contextObj in contextAgent->EventParams)
                     {
-                        if (contextObj.Type == AtkValueType.String)
+                        if (contextObj.Type == FFXIVClientStructs.FFXIV.Component.GUI.ValueType.String)
                         {
                             var label = MemoryHelper.ReadSeStringNullTerminated(new IntPtr(contextObj.String));
 
@@ -199,7 +299,7 @@ internal unsafe static class RetainerHandlers
 
     internal static bool InputNumericValue(int value)
     {
-        var numeric = (AtkUnitBase*)Svc.GameGui.GetAddonByName("InputNumeric", 1).Address;
+        var numeric = (AtkUnitBase*)Svc.GameGui.GetAddonByName("InputNumeric", 1);
         if (numeric != null)
         {
             Svc.Log.Debug($"{value}");
@@ -214,9 +314,9 @@ internal unsafe static class RetainerHandlers
         var text = Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.Addon>().GetRow(13530).Text.ToDalamudString().GetText();
         if (TryGetAddonByName<AtkUnitBase>("RetainerItemTransferProgress", out var addon) && IsAddonReady(addon))
         {
-            var button = addon->GetComponentButtonById(9);// (AtkComponentButton*)addon->UldManager.NodeList[2]->GetComponent();
-            var nodetext =  button->GetTextNodeById(2)->NodeText.GetText();
-            if (nodetext == text && button->AtkResNode->IsVisible() && button->IsEnabled && RetainerInfo.GenericThrottle)
+            var button = (AtkComponentButton*)addon->UldManager.NodeList[2]->GetComponent();
+            var nodetext = MemoryHelper.ReadSeString(&addon->UldManager.NodeList[2]->GetComponent()->UldManager.NodeList[2]->GetAsAtkTextNode()->NodeText).GetText();
+            if (nodetext == text && addon->UldManager.NodeList[2]->IsVisible() && button->IsEnabled && RetainerInfo.GenericThrottle)
             {
                 button->ClickAddonButton(addon);
                 return true;

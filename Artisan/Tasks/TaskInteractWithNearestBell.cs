@@ -147,9 +147,9 @@ internal unsafe static class PlayerWorldHandlers
     {
         if (Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.OccupiedSummoningBell]) return true;
         var x = Svc.Targets.Target;
-        if (x != null && (x.ObjectKind == ObjectKind.HousingEventObject || x.ObjectKind == ObjectKind.EventObj) && x.Name.ToString().EqualsIgnoreCaseAny(RetainerInfo.BellName, "リテイナーベル") && !IsOccupied())
+        if (x != null && (x.ObjectKind == ObjectKind.Housing || x.ObjectKind == ObjectKind.EventObj) && x.Name.ToString().EqualsIgnoreCaseAny(RetainerInfo.BellName, "リテイナーベル") && !IsOccupied())
         {
-            if (Vector3.Distance(x.Position, Svc.Objects.LocalPlayer.Position) < RetainerInfo.GetValidInteractionDistance(x) && x.IsTargetable())
+            if (Vector3.Distance(x.Position, Svc.ClientState.LocalPlayer.Position) < RetainerInfo.GetValidInteractionDistance(x) && x.IsTargetable())
             {
                 if (RetainerInfo.GenericThrottle && EzThrottler.Throttle("InteractWithBell", 5000))
                 {

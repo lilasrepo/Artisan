@@ -9,11 +9,7 @@ namespace Artisan.CraftingLogic.Solvers
 
         public IEnumerable<ISolverDefinition.Desc> Flavours(CraftState craft)
         {
-            yield return new(this, 0, 1, "Progress Only Solver");
-        }
-
-        public IEnumerable<ISolverDefinition.Desc> Flavours()
-        {
+            if (!craft.CraftExpert && !craft.CraftCollectible)
             yield return new(this, 0, 1, "Progress Only Solver");
         }
     }
@@ -28,7 +24,7 @@ namespace Artisan.CraftingLogic.Solvers
             if (step.VenerationLeft == 0 && Simulator.CanUseAction(craft, step, Skills.Veneration))
                 return new(Skills.Veneration);
 
-            Skills synthOption = new StandardSolver().BestSynthesis(craft, step, true);
+            Skills synthOption = new StandardSolver(false).BestSynthesis(craft, step, true);
             if (Simulator.GetDurabilityCost(step, synthOption) >= step.Durability)
             {
                 if (Simulator.CanUseAction(craft, step, Skills.ImmaculateMend) && craft.CraftDurability >= 70) return new(Skills.ImmaculateMend);

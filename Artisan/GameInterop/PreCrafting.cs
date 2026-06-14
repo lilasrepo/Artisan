@@ -1,4 +1,4 @@
-﻿using Artisan.Autocraft;
+using Artisan.Autocraft;
 using Artisan.CraftingLists;
 using Artisan.CraftingLogic;
 using Artisan.GameInterop.CSExt;
@@ -6,12 +6,10 @@ using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Hooking;
-using Dalamud.Interface.Colors;
 using ECommons;
 using ECommons.Automation;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
-using ECommons.ImGuiMethods;
 using ECommons.Logging;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -33,15 +31,16 @@ public unsafe static class PreCrafting
     public static int equipAttemptLoops = 0;
     public static int equipGearsetLoops = 0;
     public static int timeWasteLoops = 0;
+    private static long NextTaskAt = 0;
 
     private delegate void ClickSynthesisButton(void* thisPtr, AtkEventType eventType, int eventParam, AtkEvent* atkEvent, AtkEventData* atkEventData);
-    private static Hook<ClickSynthesisButton>? _clickButton;
+    private static Hook<ClickSynthesisButton> _clickButton;
 
-    private delegate Boolean FireCallbackDelegate(AtkUnitBase* atkUnitBase, uint valueCount, AtkValue* atkValues, Boolean updateVisibility);
-    private static Hook<FireCallbackDelegate>? _gearsetCallback;
+    private delegate void* FireCallbackDelegate(AtkUnitBase* atkUnitBase, int valueCount, AtkValue* atkValues, byte updateVisibility);
+    private static Hook<FireCallbackDelegate> _gearsetCallback;
 
     delegate nint AddonWKSRecipeNote_ReceiveEventDelegate(nint a1, ushort a2, uint a3, nint a4, nint a5);
-    private static Hook<AddonWKSRecipeNote_ReceiveEventDelegate>? _cosmicCallback;
+    private static Hook<AddonWKSRecipeNote_ReceiveEventDelegate> _cosmicCallback;
 
     public enum TaskResult { Done, Retry, Abort }
     public static List<(Func<TaskResult> task, TimeSpan retryDelay)> Tasks = new();
@@ -68,14 +67,14 @@ public unsafe static class PreCrafting
                 return 0;
             }
         }
-        catch (Exception ex)
+        catch( Exception ex)
         {
             ex.Log();
         }
         return _cosmicCallback.Original(a1, a2, a3, a4, a5);
     }
 
-    private static bool CallbackDetour(AtkUnitBase* atkUnitBase, uint valueCount, AtkValue* atkValues, bool updateVisibility)
+    private static void* CallbackDetour(AtkUnitBase* atkUnitBase, int valueCount, AtkValue* atkValues, byte updateVisibility)
     {
         var name = atkUnitBase->NameString.TrimEnd();
         if (name.Length >= 11 && name.Substring(0, 11) == "SelectYesno")
@@ -133,37 +132,33 @@ public unsafe static class PreCrafting
         {
             Svc.Log.Debug($"Starting {type} crafting: {recipe.RowId} '{recipe.ItemResult.Value.Name.ToDalamudString()}'");
 
-            var requiredClass = (Job)((uint)Job.CRP + recipe.CraftType.RowId);
+            var requiredClass = Job.CRP + (byte)recipe.CraftType.RowId;
             var config = P.Config.RecipeConfigs.GetValueOrDefault(recipe.RowId) ?? new();
 
             bool hasIngredients = GetNumberCraftable(recipe) > 0;
             bool needClassChange = requiredClass != CharacterInfo.JobID;
             bool needEquipItem = recipe.ItemRequired.RowId > 0 && (needClassChange || !IsItemEquipped(recipe.ItemRequired.RowId));
-            bool needConsumables = NeedsConsumablesCheck(type, config, recipe);
-            bool needsManuals = NeedsManualsCheck(type, config, recipe);
+            bool needConsumables = NeedsConsumablesCheck(type, config);
             bool hasConsumables = HasConsumablesCheck(config);
 
             // handle errors when we're forbidden from rectifying them automatically
             if (P.Config.DontEquipItems && needClassChange)
             {
                 DuoLog.Error($"Can't craft {recipe.ItemResult.Value.Name.ToDalamudString()}: wrong class, {requiredClass} needed");
-                PauseOrDisableModes();
                 return;
             }
             if (P.Config.DontEquipItems && needEquipItem)
             {
                 DuoLog.Error($"Can't craft {recipe.ItemResult.Value.Name.ToDalamudString()}: required item {recipe.ItemRequired.Value.Name} not equipped");
-                PauseOrDisableModes();
                 return;
             }
             if (P.Config.AbortIfNoFoodPot && needConsumables && !hasConsumables)
             {
                 MissingConsumablesMessage(recipe, config);
-                PauseOrDisableModes();
                 return;
             }
 
-            bool needExitCraft = Crafting.CurState == Crafting.State.IdleBetween && (needClassChange || needEquipItem || needsManuals);
+            bool needExitCraft = Crafting.CurState == Crafting.State.IdleBetween && (needClassChange || needEquipItem || needConsumables);
 
             // TODO: pre-setup solver for incoming craft
             Tasks.Clear();
@@ -190,20 +185,13 @@ public unsafe static class PreCrafting
                 Tasks.Add((() => TaskEquipItem(recipe.ItemRequired.RowId), default));
             }
 
-            var skippingConsumables = ConsumableChecker.SkippingConsumablesByConfig(recipe);
+            bool needFood = config != default && ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && !ConsumableChecker.IsFooded(config);
+            bool needPot = config != default && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && !ConsumableChecker.IsPotted(config);
+            bool needManual = config != default && ConsumableChecker.HasItem(config.RequiredManual, false) && !ConsumableChecker.IsManualled(config);
+            bool needSquadronManual = config != default && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) && !ConsumableChecker.IsSquadronManualled(config);
 
-            if (!skippingConsumables)
-            {
-                bool needFood = config != default && ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && !ConsumableChecker.IsFooded(config);
-                bool needPot = config != default && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && !ConsumableChecker.IsPotted(config);
-                bool needManual = config != default && ConsumableChecker.HasItem(config.RequiredManual, false) && !ConsumableChecker.IsManualled(config);
-                bool needSquadronManual = config != default && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) && !ConsumableChecker.IsSquadronManualled(config);
-
-                if (needFood || needPot || needManual || needSquadronManual)
-                {
-                    Tasks.Add((() => TaskUseConsumables(config, type), default));
-                }
-            }
+            if (needFood || needPot || needManual || needSquadronManual)
+                Tasks.Add((() => TaskUseConsumables(config, type), default));
             Tasks.Add((() => TaskSelectRecipe(recipe), TimeSpan.FromMilliseconds(500)));
             timeWasteLoops = 1;
             Tasks.Add((() => TimeWasteLoop(), TimeSpan.FromMilliseconds(10))); //This is needed for controller players, else if they're near an NPC it will target them and exit the craft as the button is interpreted as target and not confirm.
@@ -217,21 +205,6 @@ public unsafe static class PreCrafting
         }
     }
 
-    private static void CloseSaddleBagIfOpen()
-    {
-        if (TryGetAddonByName<AddonInventoryBuddy>("InventoryBuddy", out var addon))
-            addon->Close(true);
-    }
-
-    private static void PauseOrDisableModes()
-    {
-        if (Endurance.Enable)
-            Endurance.ToggleEndurance(false);
-
-        if (CraftingListUI.Processing)
-            CraftingListFunctions.Paused = true;
-    }
-
     internal static void MissingConsumablesMessage(Recipe recipe, RecipeConfig? config)
     {
         List<string> missingConsumables = MissingConsumables(config);
@@ -239,20 +212,10 @@ public unsafe static class PreCrafting
         DuoLog.Error($"Can't craft {recipe.ItemResult.Value.Name.ToDalamudString()}: required consumables not up and missing {string.Join(", ", missingConsumables)}");
     }
 
-    internal static bool NeedsConsumablesCheck(CraftType type, RecipeConfig? config, Recipe recipe)
+    internal static bool NeedsConsumablesCheck(CraftType type, RecipeConfig? config)
     {
-        if (ConsumableChecker.SkippingConsumablesByConfig(recipe))
-            return false;
-
+        // TODO: repair & extract materia
         return (type == CraftType.Normal || (type == CraftType.Trial && P.Config.UseConsumablesTrial) || (type == CraftType.Quick && P.Config.UseConsumablesQuickSynth)) && (!ConsumableChecker.IsFooded(config) || !ConsumableChecker.IsPotted(config) || !ConsumableChecker.IsManualled(config) || !ConsumableChecker.IsSquadronManualled(config));
-    }
-
-    internal static bool NeedsManualsCheck(CraftType type, RecipeConfig? config, Recipe recipe)
-    {
-        if (ConsumableChecker.SkippingConsumablesByConfig(recipe))
-            return false;
-
-        return (type == CraftType.Normal || (type == CraftType.Trial && P.Config.UseConsumablesTrial) || (type == CraftType.Quick && P.Config.UseConsumablesQuickSynth)) && (!ConsumableChecker.IsManualled(config) || !ConsumableChecker.IsSquadronManualled(config));
     }
 
     internal static bool HasConsumablesCheck(RecipeConfig? config)
@@ -316,9 +279,9 @@ public unsafe static class PreCrafting
             if (int.TryParse(addon->SelectedRecipeQuantityCraftableFromMaterialsInInventory->NodeText.ToString(), out int output))
                 return output;
         }
-        if (TryGetAddonByName<AtkUnitBase>("WKSRecipeNotebook", out var cosmic) && cosmic->GetTextNodeById(34) != null)
+        if (TryGetAddonByName<AtkUnitBase>("WKSRecipeNotebook", out var cosmic) && cosmic->UldManager.NodeList[24] != null)
         {
-            if (int.TryParse(cosmic->GetNodeById(34)->GetAsAtkTextNode()->NodeText.ToString(), out int output))
+            if (int.TryParse(cosmic->UldManager.NodeList[24]->GetAsAtkTextNode()->NodeText.ToString(), out int output))
                 return output;
         }
         return -1;
@@ -336,13 +299,13 @@ public unsafe static class PreCrafting
             case Crafting.State.IdleNormal:
                 return TaskResult.Done;
             case Crafting.State.IdleBetween:
-                var addon = (AddonRecipeNote*)Svc.GameGui.GetAddonByName("RecipeNote").Address;
+                var addon = (AddonRecipeNote*)Svc.GameGui.GetAddonByName("RecipeNote");
                 if (addon != null && addon->AtkUnitBase.IsVisible)
                 {
                     Svc.Log.Debug("Closing recipe menu to exit crafting state");
                     Callback.Fire(&addon->AtkUnitBase, true, -1);
                 }
-                var addon2 = (AtkUnitBase*)Svc.GameGui.GetAddonByName("WKSRecipeNotebook").Address;
+                var addon2 = (AtkUnitBase*)Svc.GameGui.GetAddonByName("WKSRecipeNotebook");
                 if (addon2 != null && addon2->IsVisible)
                 {
                     Svc.Log.Debug("Closing recipe menu to exit crafting state");
@@ -406,13 +369,10 @@ public unsafe static class PreCrafting
         if (IsItemEquipped(ItemId))
             return TaskResult.Done;
 
-        CloseSaddleBagIfOpen();
-
-        var itemSheet = LuminaSheets.ItemSheet[ItemId];
         var pos = FindItemInInventory(ItemId, [InventoryType.Inventory1, InventoryType.Inventory2, InventoryType.Inventory3, InventoryType.Inventory4, InventoryType.ArmoryMainHand, InventoryType.ArmoryHands]);
         if (pos == null)
         {
-            DuoLog.Error($"Failed to find item {itemSheet.Name} (ID: {ItemId}) in inventory");
+            DuoLog.Error($"Failed to find item {LuminaSheets.ItemSheet[ItemId].Name} (ID: {ItemId}) in inventory");
             Endurance.ToggleEndurance(false);
             if (CraftingListUI.Processing)
                 CraftingListFunctions.Paused = true;
@@ -420,8 +380,32 @@ public unsafe static class PreCrafting
             return TaskResult.Abort;
         }
 
-        InventoryManager.Instance()->MoveItemSlot(pos.Value.inv, pos.Value.slot, InventoryType.EquippedItems, (ushort)(itemSheet.EquipSlotCategory.RowId - 1), true);
+        var agentId = pos.Value.inv is InventoryType.ArmoryMainHand or InventoryType.ArmoryHands ? AgentId.ArmouryBoard : AgentId.Inventory;
+        var addonId = AgentModule.Instance()->GetAgentByInternalId(agentId)->GetAddonId();
+        var ctx = AgentInventoryContext.Instance();
+        ctx->OpenForItemSlot(pos.Value.inv, pos.Value.slot, addonId);
 
+        var contextMenu = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextMenu");
+        if (contextMenu != null)
+        {
+            for (int i = 0; i < contextMenu->AtkValuesCount; i++)
+            {
+                var firstEntryIsEquip = ctx->EventIds[i] == 25; // i'th entry will fire eventid 7+i; eventid 25 is 'equip'
+                if (firstEntryIsEquip)
+                {
+                    Svc.Log.Debug($"Equipping item #{ItemId} from {pos.Value.inv} @ {pos.Value.slot}, index {i}");
+                    Callback.Fire(contextMenu, true, 0, i - 7, 0, 0, 0); // p2=-1 is close, p2=0 is exec first command
+                }
+            }
+            Callback.Fire(contextMenu, true, 0, -1, 0, 0, 0);
+            equipAttemptLoops++;
+
+            if (equipAttemptLoops >= 5)
+            {
+                DuoLog.Error($"Equip option not found after 5 attempts. Aborting.");
+                return TaskResult.Abort;
+            }
+        }
         return TaskResult.Retry;
     }
 
@@ -433,8 +417,6 @@ public unsafe static class PreCrafting
         if ((!P.Config.UseConsumablesQuickSynth && type == CraftType.Quick) ||
             (!P.Config.UseConsumablesTrial && type == CraftType.Trial))
             return TaskResult.Done;
-
-        CloseSaddleBagIfOpen();
 
         if (Occupied())
             return TaskResult.Retry;
@@ -529,7 +511,7 @@ public unsafe static class PreCrafting
                     if (re != null && re->RecipeId == recipe.RowId)
                         return TaskResult.Done;
                 }
-                catch
+                catch (Exception ex)
                 {
                     return TaskResult.Done;
                 }
@@ -556,7 +538,7 @@ public unsafe static class PreCrafting
 
         }
 
-        var addon = (AddonRecipeNote*)Svc.GameGui.GetAddonByName("RecipeNote").Address;
+        var addon = (AddonRecipeNote*)Svc.GameGui.GetAddonByName("RecipeNote");
         if (addon == null)
             return TaskResult.Retry;
 
@@ -567,12 +549,12 @@ public unsafe static class PreCrafting
 
     public static bool IsItemEquipped(uint ItemId) => InventoryManager.Instance()->GetItemCountInContainer(ItemId, InventoryType.EquippedItems) > 0;
 
-    private static (InventoryType inv, ushort slot)? FindItemInInventory(uint ItemId, IEnumerable<InventoryType> inventories)
+    private static (InventoryType inv, int slot)? FindItemInInventory(uint ItemId, IEnumerable<InventoryType> inventories)
     {
         foreach (var inv in inventories)
         {
             var cont = InventoryManager.Instance()->GetInventoryContainer(inv);
-            for (ushort i = 0; i < cont->Size; ++i)
+            for (int i = 0; i < cont->Size; ++i)
             {
                 if (cont->GetInventorySlot(i)->ItemId == ItemId)
                 {

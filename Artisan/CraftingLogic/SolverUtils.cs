@@ -27,7 +27,7 @@ public static class SolverUtils
 
     public static TimeSpan EstimateCraftTime(Solver csolver, CraftState craft, int startingQuality)
     {
-        var delay = P.Config.ReplicateMacroDelay ? 0 : (double)P.Config.AutoDelay + (P.Config.DelayRecommendation ? P.Config.RecommendationDelay : 0);
+        var delay = (double)P.Config.AutoDelay + (P.Config.DelayRecommendation ? P.Config.RecommendationDelay : 0);
         var delaySeconds = delay / 1000;
         var solver = csolver.Clone();
 
@@ -39,10 +39,7 @@ public static class SolverUtils
             if (action == Skills.None)
                 break;
 
-            bool length = action.ActionIsLengthyAnimation();
-            duration += (length ? 2.5 : 1.25) + delaySeconds;
-            if (P.Config.ReplicateMacroDelay)
-                duration += (length ? 0.5 : 0.75);
+            duration += (action.ActionIsLengthyAnimation() ? 2.5 : 1.25) + delaySeconds;
 
             var (res, next) = Simulator.Execute(craft, step, action, 0, 1);
             if (res == Simulator.ExecuteResult.CantUse)

@@ -1,14 +1,14 @@
 ﻿using Artisan.CraftingLists;
 using Artisan.RawInformation;
-using ECommons;
 using ECommons.DalamudServices;
 using Lumina.Excel.Sheets;
+using OtterGui;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
 internal static class CraftingListHelpers
-{
+{    
     internal static Dictionary<uint, bool> SelectedRecipesCraftable = new();
 
     public static void AddRecipeIngredientsToList(Recipe? recipe, ref Dictionary<uint, int> ingredientList, bool addSublist = true, NewCraftingList? selectedList = null)
@@ -69,12 +69,12 @@ internal static class CraftingListHelpers
         }
     }
 
-    public static Recipe? GetIngredientRecipe(uint ingredient, int craftType = -1)
+    public static Recipe? GetIngredientRecipe(uint ingredient)
     {
-        if (craftType != -1 && LuminaSheets.RecipeSheet.Values.Any(x => x.ItemResult.Value.RowId == ingredient && x.CraftType.RowId == craftType))
-            return LuminaSheets.RecipeSheet.Values.First(x => x.ItemResult.Value.RowId == ingredient && x.CraftType.RowId == craftType);
-        else
-            return LuminaSheets.RecipeSheet.Values.FirstOrNull(x => x.ItemResult.Value.RowId == ingredient);
+        if (LuminaSheets.RecipeSheet.Values.FindFirst(x => x.ItemResult.Value.RowId == ingredient, out var result))
+            return result;
+
+        return null;
     }
 
     public static void TidyUpList(NewCraftingList list)
@@ -91,20 +91,18 @@ internal static class CraftingListHelpers
             if (SelectedRecipesCraftable[requiredItem.Key])
             {
                 var recipe = GetIngredientRecipe(requiredItem.Key);
-                if (list.Recipes.Any(x => x.ID == recipe?.RowId))
+                if (list.Recipes.Any(x => x.ID == recipe.Value.RowId))
                 {
-                    double? amountRes = recipe?.AmountResult;
-                    var crafting = list.Recipes.First(x => x.ID == recipe?.RowId).Quantity * amountRes;
-
+                    var crafting = list.Recipes.First(x => x.ID == recipe.Value.RowId).Quantity * recipe.Value.AmountResult;
+                    
                     if (crafting > requiredItem.Value)
                     {
-                        double quant = Math.Ceiling(requiredItem.Value / amountRes ?? 0);
-                        list.Recipes.First(x => x.ID == recipe?.RowId).Quantity = (int)quant;
+                        double quant = Math.Ceiling((double)requiredItem.Value / recipe.Value.AmountResult);
+                        list.Recipes.First(x => x.ID == recipe.Value.RowId).Quantity = (int)quant;
                     }
                 }
 
             }
         }
-
     }
 }

@@ -2,16 +2,14 @@
 using Artisan.CraftingLogic;
 using Artisan.GameInterop;
 using Artisan.Sounds;
-using Dalamud.Game.Chat;
 using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.Text;
-using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
+using Dalamud.Game.Text;
 using ECommons.DalamudServices;
 using ECommons.Logging;
-using System.Collections.Generic;
+using Dalamud.Game.Text.SeStringHandling;
 using System.Linq;
-using Item = Lumina.Excel.Sheets.Item;
+using Lumina.Excel.Sheets;
 
 namespace Artisan.Autocraft
 {
@@ -25,23 +23,17 @@ namespace Artisan.Autocraft
             Svc.Chat.ChatMessage += ScanForHQItems;
         }
 
-        private static void ScanForHQItems(IHandleableChatMessage handler)
+        private static void ScanForHQItems(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
         {
-            if (handler.LogKind == XivChatType.Crafting && handler.SourceKind == XivChatRelationKind.LocalPlayer && Crafting.CurState == Crafting.State.WaitFinish)
+            if (type == (XivChatType)2242 && Svc.Condition[ConditionFlag.Crafting])
             {
-                if (handler.Message.Payloads.Any(x => x.Type == PayloadType.Item))
+                if (message.Payloads.Any(x => x.Type == PayloadType.Item))
                 {
-                    var item = (ItemPayload)handler.Message.Payloads.First(x => x.Type == PayloadType.Item);
+                    var item = (ItemPayload)message.Payloads.First(x => x.Type == PayloadType.Item);
                     if (Svc.Data.Excel.GetSheet<Item>().GetRow(item.Item.RowId).CanBeHq)
                     {
                         if (Endurance.Enable && P.Config.EnduranceStopNQ && !item.IsHQ)
                         {
-                            if (Crafting.CurCraft is not null)
-                            {
-                                var config = P.Config.RecipeConfigs.GetValueOrDefault(Crafting.CurCraft.Recipe.RowId) ?? new();
-                                if (config.CurrentSolverType.Contains("Progress"))
-                                    return;
-                            }
                             Endurance.ToggleEndurance(false);
                             Svc.Toasts.ShowError("You crafted a non-HQ item. Disabling Endurance.");
                             DuoLog.Error("You crafted a non-HQ item. Disabling Endurance.");
@@ -58,7 +50,7 @@ namespace Artisan.Autocraft
             Svc.Chat.ChatMessage -= ScanForHQItems;
         }
 
-        private static void OnCraftFinished(Lumina.Excel.Sheets.Recipe? recipe, CraftState craft, StepState finalStep, bool cancelled)
+        private static void OnCraftFinished(Recipe recipe, CraftState craft, StepState finalStep, bool cancelled)
         {
             Svc.Log.Debug($"Craft Finished");
 
@@ -99,9 +91,7 @@ namespace Artisan.Autocraft
                         Endurance.ToggleEndurance(false);
                         if (P.Config.PlaySoundFinishEndurance)
                             SoundPlayer.PlaySound();
-
-                        if (P.Config.ExitCraftStanceEndurance)
-                            PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), default));
+                        DuoLog.Information("Craft X has completed.");
 
                     }
                 }

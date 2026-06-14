@@ -1,10 +1,10 @@
-﻿using Artisan.CraftingLogic;
+using Artisan.CraftingLogic;
 using Artisan.GameInterop;
 using Artisan.RawInformation.Character;
 using Dalamud.Interface.Utility.Raii;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
-using Dalamud.Bindings.ImGui;
+using ImGuiNET;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
@@ -66,7 +66,7 @@ internal static class SimulatorUIVeynVersion
 
     private static void DrawRecipeInfo(Recipe r, CraftState craft)
     {
-        using var n = ImRaii.TreeNode($"Recipe: #{r.RowId} {Job.CRP.Add(r.CraftType.RowId)} '{r.ItemResult.Value.Name.ToDalamudString()}', solver: {_selectedSolver.Name}###recipe");
+        using var n = ImRaii.TreeNode($"Recipe: #{r.RowId} {(byte)r.CraftType.RowId + Job.CRP} '{r.ItemResult.Value.Name.ToDalamudString()}', solver: {_selectedSolver.Name}###recipe");
         if (!n)
             return;
 
@@ -327,9 +327,9 @@ internal static class SimulatorUIVeynVersion
         if (recipe != null)
         {
             var config = P.Config.RecipeConfigs.GetValueOrDefault(recipe.Value.RowId) ?? new();
-            var stats = CharacterStats.GetBaseStatsForClassHeuristic(Job.CRP.Add(recipe.Value.CraftType.RowId));
+            var stats = CharacterStats.GetBaseStatsForClassHeuristic(Job.CRP + (byte)recipe.Value.CraftType.RowId);
             stats.AddConsumables(new(config.RequiredFood, config.RequiredFoodHQ), new(config.RequiredPotion, config.RequiredPotionHQ), CharacterInfo.FCCraftsmanshipbuff);
-            _selectedCraft = Crafting.BuildCraftStateForRecipe(stats, Job.CRP.Add(recipe.Value.CraftType.RowId), recipe.Value);
+            _selectedCraft = Crafting.BuildCraftStateForRecipe(stats, Job.CRP + (byte)recipe.Value.CraftType.RowId, recipe.Value);
             InitDefaultTransitionProbabilities(_selectedCraft, recipe.Value);
             var solverDesc = CraftingProcessor.GetSolverForRecipe(config, _selectedCraft);
             _selectedSolver = new(solverDesc.Name, solverDesc.CreateSolver(_selectedCraft));
@@ -352,7 +352,6 @@ internal static class SimulatorUIVeynVersion
             craft.CraftConditionProbabilities[(int)Condition.Malleable] = manyConditions ? 0.10f : 0.12f;
             craft.CraftConditionProbabilities[(int)Condition.Primed] = manyConditions ? 0.12f : 0.15f;
             craft.CraftConditionProbabilities[(int)Condition.GoodOmen] = 0.12f;
-            craft.CraftConditionProbabilities[(int)Condition.Robust] = 0.12f;
             for (Condition i = Condition.Good; i < Condition.Unknown; ++i)
                 if ((potentialConditions & (1 << (int)i)) == 0)
                     craft.CraftConditionProbabilities[(int)i] = 0;

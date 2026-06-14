@@ -80,7 +80,7 @@ namespace Artisan.RawInformation
                 if (materializePTR == IntPtr.Zero)
                     return;
 
-                var materalizeWindow = (AtkUnitBase*)materializePTR.Address;
+                var materalizeWindow = (AtkUnitBase*)materializePTR;
                 if (materalizeWindow == null)
                     return;
 
@@ -150,7 +150,7 @@ namespace Artisan.RawInformation
                         if (materializePTR == IntPtr.Zero)
                             return;
 
-                        var materalizeWindow = (AtkUnitBase*)materializePTR.Address;
+                        var materalizeWindow = (AtkUnitBase*)materializePTR;
                         if (materalizeWindow == null)
                             return;
 
@@ -159,12 +159,12 @@ namespace Artisan.RawInformation
                         var values = stackalloc AtkValue[2];
                         values[0] = new()
                         {
-                            Type = AtkValueType.Int,
+                            Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Int,
                             Int = 2,
                         };
                         values[1] = new()
                         {
-                            Type = AtkValueType.UInt,
+                            Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.UInt,
                             UInt = 0,
                         };
 

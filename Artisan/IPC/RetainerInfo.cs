@@ -41,6 +41,7 @@ namespace Artisan.IPC
         internal static bool GenericThrottle => EzThrottler.Throttle("RetainerInfoThrottler", 100);
         internal static void RethrottleGeneric(int num) => EzThrottler.Throttle("RetainerInfoThrottler", num, true);
         internal static void RethrottleGeneric() => EzThrottler.Throttle("RetainerInfoThrottler", 100, true);
+        internal static Tasks.RetainerManager retainerManager = new(Svc.SigScanner);
 
         public static bool AToolsInstalled
         {
@@ -245,9 +246,9 @@ namespace Artisan.IPC
                         ulong retainerId = 0;
                         var retainer = RetainerManager.Instance()->GetRetainerBySortedIndex((uint)i);
 
-                        if (P.Config.RetainerIDs.Count(x => x.Value == Svc.PlayerState.ContentId) > i)
+                        if (P.Config.RetainerIDs.Count(x => x.Value == Svc.ClientState.LocalContentId) > i)
                         {
-                            retainerId = P.Config.RetainerIDs.Where(x => x.Value == Svc.PlayerState.ContentId).Select(x => x.Key).ToArray()[i];
+                            retainerId = P.Config.RetainerIDs.Where(x => x.Value == Svc.ClientState.LocalContentId).Select(x => x.Key).ToArray()[i];
                         }
                         else
                         {
@@ -255,11 +256,11 @@ namespace Artisan.IPC
                                 retainerId = retainer->RetainerId;
                         }
 
-                        if (retainer->RetainerId > 0 && !P.Config.RetainerIDs.Any(x => x.Key == retainer->RetainerId && x.Value == Svc.PlayerState.ContentId))
+                        if (retainer->RetainerId > 0 && !P.Config.RetainerIDs.Any(x => x.Key == retainer->RetainerId && x.Value == Svc.ClientState.LocalContentId))
                         {
                             if (retainer->Available)
                             {
-                                P.Config.RetainerIDs.Add(retainer->RetainerId, Svc.PlayerState.ContentId);
+                                P.Config.RetainerIDs.Add(retainer->RetainerId, Svc.ClientState.LocalContentId);
                                 P.Config.Save();
                             }
                         }
@@ -324,7 +325,7 @@ namespace Artisan.IPC
 
                     return (int)RetainerData.SelectMany(x => x.Value).Where(x => x.Key == ItemId).Sum(x => x.Value.Quantity);
                 }
-                catch
+                catch (Exception ex)
                 {
                     //Svc.Log.Error(ex, "RetainerInfoItemCount");
                     return 0;
@@ -440,10 +441,6 @@ namespace Artisan.IPC
             foreach (var material in materialList.OrderByDescending(x => x.Key))
             {
                 Svc.Log.Debug($"{material}");
-                bool isCrafted = LuminaSheets.RecipeSheet.Values.Any(x => x.ItemResult.RowId == material.Key);
-                if (isCrafted && list.OnlyRestockNonCrafted)
-                    continue;
-
                 var invCount = CraftingListUI.NumberOfIngredient(material.Key);
                 if (invCount < material.Value)
                 {
@@ -462,8 +459,7 @@ namespace Artisan.IPC
                 TM.Enqueue(() => Svc.Framework.Update += Tick);
                 TM.Enqueue(() => AutoRetainerIPC.Suppress());
                 TM.EnqueueBell();
-                TM.DelayNext("BellInteracted", 1000);
-                TM.Enqueue(() => Svc.Condition[ConditionFlag.OccupiedSummoningBell]);
+                TM.DelayNext("BellInteracted", 200);
 
                 foreach (var retainer in RetainerData)
                 {
@@ -550,9 +546,9 @@ namespace Artisan.IPC
         {
             foreach (var x in Svc.Objects)
             {
-                if ((x.ObjectKind == ObjectKind.HousingEventObject || x.ObjectKind == ObjectKind.EventObj) && x.Name.ToString().EqualsIgnoreCaseAny(BellName, "リテイナーベル"))
+                if ((x.ObjectKind == ObjectKind.Housing || x.ObjectKind == ObjectKind.EventObj) && x.Name.ToString().EqualsIgnoreCaseAny(BellName, "リテイナーベル"))
                 {
-                    if (Vector3.Distance(x.Position, Svc.Objects.LocalPlayer.Position) < GetValidInteractionDistance(x) && x.IsTargetable())
+                    if (Vector3.Distance(x.Position, Svc.ClientState.LocalPlayer.Position) < GetValidInteractionDistance(x) && x.IsTargetable())
                     {
                         return x;
                     }
@@ -563,11 +559,11 @@ namespace Artisan.IPC
 
         internal static float GetValidInteractionDistance(IGameObject bell)
         {
-            if (bell.ObjectKind == ObjectKind.HousingEventObject)
+            if (bell.ObjectKind == ObjectKind.Housing)
             {
                 return 6.5f;
             }
-            else if (Inns.List.Contains((ushort)Svc.ClientState.TerritoryType))
+            else if (Inns.List.Contains(Svc.ClientState.TerritoryType))
             {
                 return 4.75f;
             }

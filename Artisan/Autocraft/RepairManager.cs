@@ -26,9 +26,6 @@ namespace Artisan.Autocraft
     {
         internal static void Repair()
         {
-            if (TryGetAddonByName<AddonSelectYesno>("SelectYesno", out var yesNo) && yesNo->IsVisible)
-                return;
-
             if (TryGetAddonByName<AddonRepair>("Repair", out var addon) && addon->AtkUnitBase.IsVisible && addon->RepairAllButton->IsEnabled && Throttler.Throttle(500))
             {
                 new AddonMaster.Repair((IntPtr)addon).RepairAll();
@@ -42,7 +39,7 @@ namespace Artisan.Autocraft
                 addon->AtkUnitBase.IsVisible &&
                 addon->YesButton is not null &&
                 addon->YesButton->IsEnabled &&
-                addon->AtkUnitBase.GetNodeById(2)->IsVisible())
+                addon->AtkUnitBase.UldManager.NodeList[15]->IsVisible())
             {
                 new AddonMaster.SelectYesno((IntPtr)addon).Yes();
             }
@@ -97,7 +94,7 @@ namespace Artisan.Autocraft
                     if (item->Condition < ret) ret = item->Condition;
                 }
             }
-            return (int)Math.Floor((double)ret / 300);
+            return (int)Math.Ceiling((double)ret / 300);
         }
 
         internal static bool CanRepairAny(int repairPercent = 0)
@@ -137,18 +134,18 @@ namespace Artisan.Autocraft
             return false;
         }
 
-        internal static bool RepairNPCNearby(out IGameObject? npc)
+        internal static bool RepairNPCNearby(out IGameObject npc)
         {
             npc = null;
-            if (Svc.Objects.LocalPlayer != null)
+            if (Svc.ClientState.LocalPlayer != null)
             {
                 foreach (var obj in Svc.Objects.Where(x => x.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.EventNpc))
                 {
-                    if (Svc.Data.Excel.GetSheet<ENpcBase>().TryGetRow(obj.BaseId, out var enpcsheet))
+                    if (Svc.Data.Excel.GetSheet<ENpcBase>().TryGetRow(obj.DataId, out var enpcsheet))
                     {
                         if (enpcsheet.ENpcData.Any(x => x.RowId == 720915))
                         {
-                            var npcDistance = Vector3.Distance(obj.Position, Svc.Objects.LocalPlayer.Position);
+                            var npcDistance = Vector3.Distance(obj.Position, Svc.ClientState.LocalPlayer.Position);
                             if (npcDistance > 7)
                                 continue;
 
@@ -170,12 +167,12 @@ namespace Artisan.Autocraft
         }
         internal static bool InteractWithRepairNPC()
         {
-            if (RepairNPCNearby(out IGameObject? npc))
+            if (RepairNPCNearby(out IGameObject npc))
             {
                 TargetSystem.Instance()->OpenObjectInteraction(npc.Struct());
                 if (TryGetAddonByName<AddonSelectIconString>("SelectIconString", out var addonSelectIconString))
                 {
-                    var index = GenericHelpers.IndexOf(Svc.Data.Excel.GetSheet<ENpcBase>().GetRow(npc.BaseId).ENpcData, x => x.RowId == 720915);
+                    var index = GenericHelpers.IndexOf(Svc.Data.Excel.GetSheet<ENpcBase>().GetRow(npc.DataId).ENpcData, x => x.RowId == 720915);
                     Callback.Fire(&addonSelectIconString->AtkUnitBase, true, index);
                 }
 
@@ -198,11 +195,11 @@ namespace Artisan.Autocraft
                 if (TryGetAddonByName<AddonRepair>("Repair", out var r) && r->AtkUnitBase.IsVisible)
                 {
                     if (DateTime.Now < _nextRetry) return false;
-                    if (!r->RepairAllButton->IsEnabled)
+                    if (!Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Occupied39])
                     {
                         if (DebugTab.Debug) Svc.Log.Verbose("Repair visible");
                         if (DebugTab.Debug) Svc.Log.Verbose("Closing repair window");
-                        r->Close(true);
+                        ActionManagerEx.UseRepair();
                     }
                     _nextRetry = DateTime.Now.Add(TimeSpan.FromMilliseconds(1000));
                     return false;
@@ -216,13 +213,12 @@ namespace Artisan.Autocraft
             {
                 if (!repairAddon->RepairAllButton->IsEnabled)
                 {
-                    repairAddon->Close(true);
+                    ActionManagerEx.UseRepair();
                     _nextRetry = DateTime.Now.Add(TimeSpan.FromMilliseconds(1000));
                     return false;
                 }
 
-                var talkingToNPC = Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.OccupiedInQuestEvent];
-                if (repairAddon->RepairAllButton->IsEnabled && (!Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Occupied39] || talkingToNPC))
+                if (!Svc.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Occupied39])
                 {
                     ConfirmYesNo();
                     Repair();

@@ -1,0 +1,2 @@
+T:Dalamud.Interface.Utility.Raii.ImRaii
+M:Lumina.Text.ReadOnly.ReadOnlySeString.ExtractText

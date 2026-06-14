@@ -19,20 +19,11 @@ public class MacroSolverDefinition : ISolverDefinition
             if (m.Steps.Count == 0) continue;
 
             var statsOk = m.Options.MinCraftsmanship <= craft.StatCraftsmanship && m.Options.MinControl <= craft.StatControl && m.Options.MinCP <= craft.StatCP;
-            yield return new(this, m.ID, 99, $"Macro: {m.Name}", statsOk ? "" : "You do not meet the minimum stats for this macro");
+            yield return new(this, m.ID, 0, $"Macro: {m.Name}", statsOk ? "" : "You do not meet the minimum stats for this macro");
         }
     }
 
     public Solver Create(CraftState craft, int flavour) => new MacroSolver(P.Config.MacroSolverConfig.FindMacro(flavour) ?? new(), craft);
-
-    public IEnumerable<ISolverDefinition.Desc> Flavours()
-    {
-        foreach (var m in P.Config.MacroSolverConfig.Macros)
-        {
-            if (m.Steps.Count == 0) continue;
-            yield return new(this, m.ID, 99, $"Macro: {m.Name}");
-        }
-    }
 }
 
 public class MacroSolver : Solver, ICraftValidator
@@ -44,7 +35,7 @@ public class MacroSolver : Solver, ICraftValidator
     public MacroSolver(MacroSolverSettings.Macro m, CraftState craft)
     {
         _macro = m;
-        _fallback = CraftingProcessor.GetAvailableSolversForRecipe(craft, false, typeof(MacroSolverDefinition)).MinBy(f => f.Priority).CreateSolver(craft);
+        _fallback = CraftingProcessor.GetAvailableSolversForRecipe(craft, false, typeof(MacroSolverDefinition)).MaxBy(f => f.Priority).CreateSolver(craft);
     }
 
     public override Solver Clone()
@@ -71,8 +62,7 @@ public class MacroSolver : Solver, ICraftValidator
                 (s.ExcludePliant && step.Condition == Condition.Pliant) ||
                 (s.ExcludeMalleable && step.Condition == Condition.Malleable) ||
                 (s.ExcludePrimed && step.Condition == Condition.Primed) ||
-                (s.ExcludeGoodOmen && step.Condition == Condition.GoodOmen) ||
-                (s.ExcludeRobust && step.Condition == Condition.Robust))
+                (s.ExcludeGoodOmen && step.Condition == Condition.GoodOmen))
             {
                 if (s.ReplaceOnExclude)
                 {
@@ -84,7 +74,7 @@ public class MacroSolver : Solver, ICraftValidator
                 }
             }
 
-            if (_macro.Options.SkipQualityIfMet && step.Quality >= (craft.IsCosmic ? craft.CraftQualityMax : craft.CraftQualityMin3) && ActionIsQuality(action))
+            if (_macro.Options.SkipQualityIfMet && step.Quality >= craft.CraftQualityMin3 && ActionIsQuality(action))
             {
                 continue;
             }
@@ -137,10 +127,8 @@ public class MacroSolver : Solver, ICraftValidator
         return new(Skills.None, "Macro has completed. Please continue to manually craft.");
     }
 
-    public static bool ActionIsQuality(Skills skill) => skill is Skills.BasicTouch or Skills.StandardTouch or Skills.AdvancedTouch or Skills.HastyTouch or Skills.PreparatoryTouch
+    private static bool ActionIsQuality(Skills skill) => skill is Skills.BasicTouch or Skills.StandardTouch or Skills.AdvancedTouch or Skills.HastyTouch or Skills.PreparatoryTouch
         or Skills.PreciseTouch or Skills.PrudentTouch or Skills.TrainedFinesse or Skills.ByregotsBlessing or Skills.GreatStrides or Skills.Innovation or Skills.TouchCombo or Skills.TouchComboRefined;
-
-    public static bool ActionIsProgress(Skills skill) => skill is Skills.BasicSynthesis or Skills.CarefulSynthesis or Skills.RapidSynthesis or Skills.Groundwork or Skills.IntensiveSynthesis or Skills.PrudentSynthesis or Skills.MuscleMemory or Skills.DelicateSynthesis;
 
     private static bool ActionIsUpgradeableQuality(Skills skill) => skill is Skills.HastyTouch or Skills.PreparatoryTouch or Skills.AdvancedTouch or Skills.StandardTouch or Skills.BasicTouch;
     private static bool ActionIsUpgradeableProgress(Skills skill) => skill is Skills.Groundwork or Skills.PrudentSynthesis or Skills.CarefulSynthesis or Skills.BasicSynthesis;

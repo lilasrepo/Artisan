@@ -5,9 +5,8 @@ using Artisan.QuestSync;
 using Artisan.RawInformation;
 using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using Dalamud.Bindings.ImGui;
+using ImGuiNET;
 using System;
-using ECommons;
 
 namespace Artisan.UI
 {
@@ -47,90 +46,86 @@ namespace Artisan.UI
 
         public unsafe override void Draw()
         {
-            try
+            bool hasIngredientsAny = QuestList.HasIngredientsForAny();
+            if (hasIngredientsAny)
             {
-                bool hasIngredientsAny = QuestList.HasIngredientsForAny();
-                if (hasIngredientsAny)
+                ImGui.Text($"Quest Helper (click to open recipe)");
+                foreach (var quest in QuestList.Quests)
                 {
-                    ImGui.Text($"Quest Helper (click to open recipe)");
-                    foreach (var quest in QuestList.Quests)
+                    if (QuestList.IsOnQuest((ushort)quest.Key))
                     {
-                        if (QuestList.IsOnQuest((ushort)quest.Key))
+                        var hasIngredients = CraftingListFunctions.HasItemsForRecipe(QuestList.GetRecipeForQuest((ushort)quest.Key));
+                        if (hasIngredients)
                         {
-                            var hasIngredients = CraftingListFunctions.HasItemsForRecipe(QuestList.GetRecipeForQuest((ushort)quest.Key));
-                            if (hasIngredients)
+                            if (ImGui.Button($"{((ushort)quest.Key).NameOfQuest()}"))
                             {
-                                if (ImGui.Button($"{((ushort)quest.Key).NameOfQuest()}"))
-                                {
 
-                                    if (Crafting.CurState is Crafting.State.IdleNormal or Crafting.State.IdleBetween)
-                                    {
-                                        var recipe = LuminaSheets.RecipeSheet[QuestList.GetRecipeForQuest((ushort)quest.Key)];
-                                        PreCrafting.Tasks.Add((() => PreCrafting.TaskSelectRecipe(recipe), TimeSpan.FromMilliseconds(500)));
-                                    }
+                                if (Crafting.CurState is Crafting.State.IdleNormal or Crafting.State.IdleBetween)
+                                {
+                                    var recipe = LuminaSheets.RecipeSheet[QuestList.GetRecipeForQuest((ushort)quest.Key)];
+                                    PreCrafting.Tasks.Add((() => PreCrafting.TaskSelectRecipe(recipe), TimeSpan.FromMilliseconds(500)));
                                 }
                             }
                         }
-
                     }
 
                 }
-                bool isOnSayQuest = QuestList.IsOnSayQuest();
-                if (isOnSayQuest)
+
+            }
+            bool isOnSayQuest = QuestList.IsOnSayQuest();
+            if (isOnSayQuest)
+            {
+                ImGui.Text($"Quest Helper (click to say)");
+                foreach (var quest in QuestManager.Instance()->DailyQuests)
                 {
-                    ImGui.Text($"Quest Helper (click to say)");
-                    foreach (var quest in QuestManager.Instance()->DailyQuests)
+                    string message = QuestList.GetSayQuestString(quest.QuestId);
+                    if (message != "")
                     {
-                        string message = QuestList.GetSayQuestString(quest.QuestId);
-                        if (message != "")
+                        if (ImGui.Button($@"Say ""{message}"""))
                         {
-                            if (ImGui.Button($@"Say ""{message}"""))
-                            {
-                                CommandProcessor.ExecuteThrottled($"/say {message}");
-                            }
+                            CommandProcessor.ExecuteThrottled($"/say {message}");
                         }
                     }
                 }
-                bool isOnEmoteQuest = QuestList.IsOnEmoteQuest();
-                if (isOnEmoteQuest)
+            }
+            bool isOnEmoteQuest = QuestList.IsOnEmoteQuest();
+            if (isOnEmoteQuest)
+            {
+                ImGui.Text("Quest Helper (click to target and emote)");
+                foreach (var quest in QuestManager.Instance()->DailyQuests)
                 {
-                    ImGui.Text("Quest Helper (click to target and emote)");
-                    foreach (var quest in QuestManager.Instance()->DailyQuests)
+                    if (quest.IsCompleted) continue;
+
+                    if (QuestList.EmoteQuests.TryGetValue(quest.QuestId, out var data))
                     {
-                        if (quest.IsCompleted) continue;
-
-                        if (QuestList.EmoteQuests.TryGetValue(quest.QuestId, out var data))
+                        if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[data.NPCDataId].Singular.ExtractText()} and do {data.Emote}"))
                         {
-                            if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[data.NPCDataId].Singular.GetText()} and do {data.Emote}"))
-                            {
-                                QuestList.DoEmoteQuest(quest.QuestId);
-                            }
+                            QuestList.DoEmoteQuest(quest.QuestId);
                         }
+                    }
 
-                        if (quest.QuestId == 2318)
+                    if (quest.QuestId == 2318)
+                    {
                         {
+                            if (QuestList.EmoteQuests.TryGetValue(9998, out var npc1))
                             {
-                                if (QuestList.EmoteQuests.TryGetValue(9998, out var npc1))
+                                if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc1.NPCDataId].Singular.ExtractText()} and do {npc1.Emote}"))
                                 {
-                                    if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc1.NPCDataId].Singular.GetText()} and do {npc1.Emote}"))
-                                    {
-                                        QuestList.DoEmoteQuest(9998);
-                                    }
+                                    QuestList.DoEmoteQuest(9998);
                                 }
+                            }
 
-                                if (QuestList.EmoteQuests.TryGetValue(9999, out var npc2))
+                            if (QuestList.EmoteQuests.TryGetValue(9999, out var npc2))
+                            {
+                                if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc2.NPCDataId].Singular.ExtractText()} and do {npc2.Emote}"))
                                 {
-                                    if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc2.NPCDataId].Singular.GetText()} and do {npc2.Emote}"))
-                                    {
-                                        QuestList.DoEmoteQuest(9999);
-                                    }
+                                    QuestList.DoEmoteQuest(9999);
                                 }
                             }
                         }
                     }
                 }
             }
-            catch { }
         }
     }
 }
