@@ -1,4 +1,4 @@
-using Artisan.Autocraft;
+﻿using Artisan.Autocraft;
 using Artisan.CraftingLogic.Solvers;
 using Artisan.GameInterop;
 using Artisan.RawInformation;
@@ -17,6 +17,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using ECommons.GameHelpers;
+using System.Diagnostics.Tracing;
 
 namespace Artisan.CraftingLogic;
 
@@ -49,7 +51,7 @@ public class RecipeConfig
     public bool RequiredFoodHQ => requiredFood == Default ? P.Config.DefaultConsumables.requiredFoodHQ : requiredFoodHQ;
     public bool RequiredPotionHQ => requiredPotion == Default ? P.Config.DefaultConsumables.requiredPotionHQ : requiredPotionHQ;
 
-
+    
     public string FoodName => requiredFood == Default ? $"{P.Config.DefaultConsumables.FoodName} (Default)" : RequiredFood == Disabled ? "Disabled" : $"{(RequiredFoodHQ ? " " : "")}{ConsumableChecker.Food.FirstOrDefault(x => x.Id == RequiredFood).Name}";
     public string PotionName => requiredPotion == Default ? $"{P.Config.DefaultConsumables.PotionName} (Default)" : RequiredPotion == Disabled ? "Disabled" : $"{(RequiredPotionHQ ? " " : "")}{ConsumableChecker.Pots.FirstOrDefault(x => x.Id == RequiredPotion).Name}";
     public string ManualName => requiredManual == Default ? $"{P.Config.DefaultConsumables.ManualName} (Default)" : RequiredManual == Disabled ? "Disabled" : $"{ConsumableChecker.Manuals.FirstOrDefault(x => x.Id == RequiredManual).Name}";
@@ -71,7 +73,7 @@ public class RecipeConfig
         changed |= DrawPotion();
         changed |= DrawManual();
         changed |= DrawSquadronManual();
-        changed |= DrawSolver(craft);
+        changed |= DrawSolver(craft, liveStats: Player.JobId == craft.Recipe.CraftType.RowId + 8);
         DrawSimulator(craft);
         return changed;
     }
@@ -287,6 +289,9 @@ public class RecipeConfig
             {
                 if (craft.MissionHasMaterialMiracle && solver.Name == "Standard Recipe Solver" && P.Config.UseMaterialMiracle)
                     ImGuiEx.TextWrapped($"This would use Material Miracle, which is not compatible with the simulator.");
+                else
+                if (solver.Name == "Raphael Recipe Solver" && !RaphaelCache.HasSolution(craft, out _))
+                    ImGuiEx.TextWrapped($"Unable to generate a simulator without a Raphael solution generated.");
                 else
                     ImGuiEx.TextWrapped(hintColor, solverHint);
             }

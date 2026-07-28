@@ -4,6 +4,7 @@ using Artisan.GameInterop;
 using Artisan.RawInformation;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Plugin.Services;
+using ECommons;
 using ECommons.DalamudServices;
 using ECommons.Logging;
 using OtterGui;
@@ -122,7 +123,7 @@ namespace Artisan.IPC
 
         public unsafe static void CraftX(ushort recipeId, int amount)
         {
-            if (LuminaSheets.RecipeSheet!.FindFirst(x => x.Value.RowId == recipeId, out var recipe))
+            if (LuminaSheets.RecipeSheet!.TryGetFirst(x => x.Value.RowId == recipeId, out var recipe))
             {
                 PreCrafting.Tasks.Add((() => PreCrafting.TaskSelectRecipe(recipe.Value), TimeSpan.FromMilliseconds(500)));
                 P.TM.Enqueue(() => PreCrafting.Tasks.Count == 0);

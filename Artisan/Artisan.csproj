@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Authors></Authors>
     <Company></Company>
-    <Version>4.0.3.47</Version>
+    <Version>4.0.4.8</Version>
     <Description>A 'simple' crafting plugin.</Description>
     <Copyright>Taurenkey</Copyright>
   </PropertyGroup>
@@ -84,7 +84,7 @@
     <None Update="Images\ThemeCraftingWindowExample.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="raphael-cli.exe">
+    <None Update="raphael-cli.bin">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Sounds\Time Up.mp3">
@@ -95,13 +95,13 @@
   <ItemGroup>
     <PackageReference Include="DalamudPackager" Version="13.1.0" />
     <PackageReference Include="Discord.Net.Webhook" Version="3.15.3" />
+    <ProjectReference Include="..\ECommons\ECommons\ECommons.csproj" />
     <PackageReference Include="FuzzySharp" Version="2.0.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.10.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Reloaded.Memory" Version="9.4.2" />
     <PackageReference Include="SharpDX.Direct2D1" Version="4.2.0" />
-    <ProjectReference Include="..\ECommons\ECommons\ECommons.csproj" />
     <ProjectReference Include="..\OtterGui\OtterGui.csproj" />
     <ProjectReference Include="..\PunishLib\PunishLib\PunishLib.csproj" />
     <Reference Include="Newtonsoft.Json">
@@ -117,13 +117,21 @@
      <Private>false</Private>
 	</Reference>
     <Reference Include="Dalamud.Bindings.ImGui">
-      <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImGui.dll</HintPath>
-      <Private>false</Private>
+        <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImGui.dll</HintPath>
+        <Private>False</Private>
     </Reference>
-        <Reference Include="Dalamud.Bindings.ImPlot">
-            <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImPlot.dll</HintPath>
-            <Private>False</Private>
-        </Reference>
+    <Reference Include="Dalamud.Bindings.ImPlot">
+        <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImPlot.dll</HintPath>
+        <Private>False</Private>
+    </Reference>
+    <Reference Include="Dalamud.Bindings.ImGuizmo">
+        <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImGuizmo.dll</HintPath>
+        <Private>False</Private>
+    </Reference>
+    <Reference Include="TerraFX.Interop.Windows">
+        <HintPath>$(DalamudLibPath)TerraFX.Interop.Windows.dll</HintPath>
+        <Private>False</Private>
+    </Reference>
     <Reference Include="ImGuiScene">
       <HintPath>$(DalamudLibPath)ImGuiScene.dll</HintPath>
       <Private>false</Private>

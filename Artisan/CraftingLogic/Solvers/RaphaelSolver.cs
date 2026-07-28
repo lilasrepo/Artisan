@@ -1,14 +1,18 @@
+﻿using Artisan.Autocraft;
 using Artisan.GameInterop;
 using Artisan.RawInformation;
 using Artisan.UI;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Components;
 using ECommons;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
+using ECommons.GameHelpers;
 using ECommons.ImGuiMethods;
 using ECommons.Logging;
 using Dalamud.Bindings.ImGui;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -36,8 +40,8 @@ namespace Artisan.CraftingLogic.Solvers
 
         public IEnumerable<ISolverDefinition.Desc> Flavours(CraftState craft)
         {
-            if (RaphaelCache.HasSolution(craft, out var solution))
-                yield return new(this, 3, 0, $"Raphael Recipe Solver");
+            //if (RaphaelCache.HasSolution(craft, out var solution))
+            yield return new(this, 3, 0, $"Raphael Recipe Solver");
         }
     }
 
@@ -93,8 +97,8 @@ namespace Artisan.CraftingLogic.Solvers
                 {
                     StartInfo = new ProcessStartInfo
                     {
-                        FileName = Path.Join(Path.GetDirectoryName(Svc.PluginInterface.AssemblyLocation.FullName), "raphael-cli.exe"),
-                        Arguments = $"solve {itemText} {manipulation} --level {craft.StatLevel} --stats {craft.StatCraftsmanship} {craft.StatControl} {craft.StatCP} {extraArgsBuilder} --output-variables ids", // Command to execute
+                        FileName = Path.Join(Path.GetDirectoryName(Svc.PluginInterface.AssemblyLocation.FullName), "raphael-cli.bin"),
+                        Arguments = $"solve {itemText} {manipulation} --level {craft.StatLevel} --stats {craft.StatCraftsmanship} {craft.StatControl} {craft.StatCP} {extraArgsBuilder} --output-variables action_ids", // Command to execute
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -105,7 +109,19 @@ namespace Artisan.CraftingLogic.Solvers
                 Svc.Log.Information(process.StartInfo.Arguments);
 
                 var cts = new CancellationTokenSource();
-                cts.Token.Register(() => { process.Kill(); Tasks.Remove(key, out var _); });
+                cts.Token.Register(() =>
+                {
+                    try
+                    {
+                        process?.Kill();
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Log("Couldn't remove process, likely already completed.");
+                    }
+                    Tasks.TryRemove(key, out var _);
+                }
+                );
                 cts.CancelAfter(TimeSpan.FromMinutes(P.Config.RaphaelSolverConfig.TimeOutMins));
 
                 var task = Task.Run(() =>
@@ -119,6 +135,9 @@ namespace Artisan.CraftingLogic.Solvers
                         cts.Cancel();
                         return;
                     }
+                    cts.Token.ThrowIfCancellationRequested();
+
+                    Svc.Log.Information("Raphael process completed, output generated");
                     var rng = new Random();
                     var ID = rng.Next(50001, 10000000);
                     while (P.Config.RaphaelSolverCacheV3.Any(kv => kv.Value.ID == ID))
@@ -141,7 +160,7 @@ namespace Artisan.CraftingLogic.Solvers
                         }
                     };
 
-                    cts.Token.ThrowIfCancellationRequested();
+                    Svc.Log.Information("Raphael macro generated and stored in cache.");
                     if (P.Config.RaphaelSolverCacheV3[key] == null || P.Config.RaphaelSolverCacheV3[key].Steps.Count == 0)
                     {
                         Svc.Log.Error($"Raphael failed to generate a valid macro. This could be one of the following reasons:" +
@@ -153,40 +172,66 @@ namespace Artisan.CraftingLogic.Solvers
                         return;
                     }
 
+                    static bool autoSwitchOk(uint recipeId)
+                    {
+                        if (P.Config.RaphaelSolverConfig.AutoSwitchOverManual)
+                            return true;
+
+                        if (P.Config.RecipeConfigs.TryGetValue(recipeId, out var cfg))
+                            // flavours: 0 = standard, expert; 3 = raphael; otherwise = macro/script
+                            return cfg.SolverFlavour is 0 or 3;
+
+                        return true;
+                    }
 
                     if (P.Config.RaphaelSolverConfig.AutoSwitch)
                     {
+                        Svc.Log.Information("Auto-switch is enabled, switching solver for recipe if applicable.");
                         if (!P.Config.RaphaelSolverConfig.AutoSwitchOnAll)
                         {
-                            Svc.Log.Debug("Switching to Raphael solver");
-                            var opt = CraftingProcessor.GetAvailableSolversForRecipe(craft, true).FirstOrNull(x => x.Name == $"Raphael Recipe Solver");
-                            if (opt is not null)
+                            Svc.Log.Debug("Switching to Raphael solver - Single");
+                            var nopt = CraftingProcessor.GetAvailableSolversForRecipe(craft, true).FirstOrNull(x => x.Name == $"Raphael Recipe Solver");
+                            if (nopt is { } opt)
                             {
-                                var config = P.Config.RecipeConfigs.GetValueOrDefault(craft.Recipe.RowId) ?? new();
-                                config.SolverType = opt?.Def.GetType().FullName!;
-                                config.SolverFlavour = (int)(opt?.Flavour);
-                                P.Config.RecipeConfigs[craft.Recipe.RowId] = config;
+                                if (autoSwitchOk(craft.Recipe.RowId))
+                                {
+                                    Svc.Log.Information("AutoSwitchOk, setting");
+                                    var config = P.Config.RecipeConfigs.GetValueOrDefault(craft.Recipe.RowId) ?? new();
+                                    config.SolverType = opt.Def.GetType().FullName!;
+                                    config.SolverFlavour = opt.Flavour;
+                                    P.Config.RecipeConfigs[craft.Recipe.RowId] = config;
+                                }
+                                else
+                                    Svc.Log.Information("Never mind, recipe already has a macro assigned");
                             }
                         }
                         else
                         {
                             var crafts = AllValidCrafts(key, craft.Recipe.CraftType.RowId).ToList();
-                            Svc.Log.Debug($"Applying solver to {crafts.Count()} recipes.");
-                            var opt = CraftingProcessor.GetAvailableSolversForRecipe(craft, true).FirstOrNull(x => x.Name == $"Raphael Recipe Solver");
-                            if (opt is not null)
+                            Svc.Log.Information($"Applying solver to {crafts.Count} recipes.");
+                            var nopt = CraftingProcessor.GetAvailableSolversForRecipe(craft, true).FirstOrNull(x => x.Name == $"Raphael Recipe Solver");
+                            if (nopt is { } opt)
                             {
                                 var config = P.Config.RecipeConfigs.GetValueOrDefault(craft.Recipe.RowId) ?? new();
-                                config.SolverType = opt?.Def.GetType().FullName!;
-                                config.SolverFlavour = (int)(opt?.Flavour);
+                                config.SolverType = opt.Def.GetType().FullName!;
+                                config.SolverFlavour = opt.Flavour;
                                 foreach (var c in crafts)
                                 {
-                                    Svc.Log.Debug($"Switching {c.Recipe.RowId} ({c.Recipe.ItemResult.Value.Name}) to Raphael solver");
-                                    P.Config.RecipeConfigs[c.Recipe.RowId] = config;
+                                    if (autoSwitchOk(c.Recipe.RowId))
+                                    {
+                                        Svc.Log.Information($"Switching {c.Recipe.RowId} ({c.Recipe.ItemResult.Value.Name}) to Raphael solver");
+                                        P.Config.RecipeConfigs[c.Recipe.RowId] = config;
+                                    }
+                                    else
+                                        Svc.Log.Information($"Skipping {c.Recipe.RowId} ({c.Recipe.ItemResult.Value.Name}) because it already has a macro assigned");
                                 }
                             }
                         }
                     }
+                    Svc.Log.Information("Saving config changes after Raphael generation.");
                     P.Config.Save();
+
+                    Svc.Log.Information("Tidying up task.");
                     Tasks.Remove(key, out var _);
                 }, cts.Token);
 
@@ -259,7 +304,7 @@ namespace Artisan.CraftingLogic.Solvers
 
         internal static bool CLIExists()
         {
-            return File.Exists(Path.Join(Path.GetDirectoryName(Svc.PluginInterface.AssemblyLocation.FullName), "raphael-cli.exe"));
+            return File.Exists(Path.Join(Path.GetDirectoryName(Svc.PluginInterface.AssemblyLocation.FullName), "raphael-cli.bin"));
         }
 
         public static bool DrawRaphaelDropdown(CraftState craft, bool liveStats = true)
@@ -280,17 +325,11 @@ namespace Artisan.CraftingLogic.Solvers
                     TempConfigs[key].QuickInno = P.Config.RaphaelSolverConfig.ShowSpecialistSettings && craft.Specialist;
                 }
 
+                var opt = CraftingProcessor.GetAvailableSolversForRecipe(craft, true).FirstOrNull(x => x.Name == $"Raphael Recipe Solver");
+                var solverIsRaph = config.SolverType == opt?.Def.GetType().FullName!;
                 if (hasSolution)
                 {
-                    var opt = CraftingProcessor.GetAvailableSolversForRecipe(craft, true).FirstOrNull(x => x.Name == $"Raphael Recipe Solver");
-                    var solverIsRaph = config.SolverType == opt?.Def.GetType().FullName!;
                     var curStats = CharacterStats.GetCurrentStats();
-                    //Svc.Log.Debug($"{curStats.Craftsmanship}/{craft.StatCraftsmanship} - {curStats.Control}/{craft.StatControl} - {curStats.CP}/{craft.StatCP}");
-                    if (liveStats && craft.StatCraftsmanship != curStats.Craftsmanship && solverIsRaph)
-                    {
-                        var craftsmanshipError = curStats.Craftsmanship - craft.StatCraftsmanship > 0 ? $"(Excess of {curStats.Craftsmanship - craft.StatCraftsmanship}) " : "";
-                        ImGuiEx.Text(ImGuiColors.DalamudRed, $"Your current Craftsmanship {craftsmanshipError}does not match the generated result.\nThis solver won't be used until they match due to possible early finishes.\n(You may just need to have the correct buffs applied)");
-                    }
 
                     if (!solverIsRaph)
                     {
@@ -309,17 +348,61 @@ namespace Artisan.CraftingLogic.Solvers
                             ImGuiEx.TextCentered($"Raphael Solution Has Been Generated.");
                         }
                     }
+                    else
+                    {
+                        ImGuiEx.TextCentered($"Solution Key: {key}");
+                        var playerIsJob = Player.JobId == craft.Recipe.CraftType.RowId + 8;
+                        var parts = KeyParts(key);
+                        if (!playerIsJob)
+                            ImGuiEx.TextCentered(ImGuiColors.DalamudOrange, $"Not currently job.");
+                        else
+                        {
+                            if (curStats.Craftsmanship == craft.StatCraftsmanship)
+                                ImGuiEx.TextCentered(ImGuiColors.HealerGreen, $"Craftsmanship meets solution requirement: {parts.Crafts}.");
+                            else
+                            {
+                                ImGuiEx.TextCentered(ImGuiColors.DPSRed, $"There is a craftsmanship difference between the solution ({craft.StatCraftsmanship}) and current ({curStats.Craftsmanship}).\nRaphael won't be used until this is resolved.");
+                                var foodIsCrafts = ConsumableChecker.GetItemConsumableProperties(LuminaSheets.ItemSheet[config.RequiredFood], false)?.Params.Any(x => x.BaseParam.RowId is 70);
+                                if (foodIsCrafts == true)
+                                    ImGuiEx.TextCentered(ImGuiColors.DalamudOrange, $"(Set food is craftsmanship food, this issue will likely be resolved once the buff is applied)");
+
+                                var potIsCrafts = ConsumableChecker.GetItemConsumableProperties(LuminaSheets.ItemSheet[config.RequiredPotion], false)?.Params.Any(x => x.BaseParam.RowId is 70);
+                                if (potIsCrafts == true)
+                                    ImGuiEx.TextCentered(ImGuiColors.DalamudOrange, $"(Set potion is craftsmanship potion, this issue will likely be resolved once the buff is applied)");
+
+                                if ((foodIsCrafts == null || foodIsCrafts == false) && (potIsCrafts == null || potIsCrafts == false))
+                                    ImGuiEx.TextCentered(ImGuiColors.DalamudOrange, $"(You currently have a Well Fed/Medicated buff granting you craftsmanship\n that is not set as your food/potion, removing the buff(s) may resolve this)");
+
+                                var diffPos = Math.Abs(craft.StatCraftsmanship - curStats.Craftsmanship);
+                                var diffAct = (craft.StatCraftsmanship - curStats.Craftsmanship);
+                                if (diffPos % 5 == 0)
+                                    if (diffAct > 0)
+                                        ImGuiEx.TextCentered(ImGuiColors.DalamudOrange, $"(This solution may have been generated with a Free Company Craftsmanship buff which you no longer have)");
+                                    else
+                                        ImGuiEx.TextCentered(ImGuiColors.DalamudOrange, $"(You may have a Free Company Craftsmanship buff that was not active when this solution was generated)");
+                            }
+                        }
+
+                    }
                 }
                 else
                 {
-                    if (liveStats && P.Config.RaphaelSolverConfig.AutoGenerate && CraftingProcessor.GetAvailableSolversForRecipe(craft, true).Any())
+                    ImGuiEx.TextCentered(ImGuiColors.DalamudRed, "No Raphael Solution Generated.");
+                    if (P.Config.RaphaelSolverConfig.AutoGenerate && CraftingProcessor.GetAvailableSolversForRecipe(craft, true).Any() && (!craft.CraftExpert || (craft.CraftExpert && P.Config.RaphaelSolverConfig.GenerateOnExperts)))
                     {
-                        if (!craft.CraftExpert || (craft.CraftExpert && P.Config.RaphaelSolverConfig.GenerateOnExperts))
+                        if (liveStats && Player.JobId == craft.Recipe.CraftType.RowId + 8)
+                        {
                             Build(craft, TempConfigs[key]);
+                        }
+                        else
+                        {
+                            ImGuiEx.TextCentered(ImGuiColors.DalamudOrange, $"Raphael solution will auto-generate when current job is {Svc.Data.GetExcelSheet<ClassJob>().GetRow(craft.Recipe.CraftType.RowId + 8).Abbreviation}.");
+                        }
                     }
                 }
 
                 ImGui.Separator();
+
                 var inProgress = InProgress(craft);
                 var raphChanges = false;
 
@@ -381,12 +464,13 @@ namespace Artisan.CraftingLogic.Solvers
     public class RaphaelSolverSettings
     {
         public bool AllowEnsureReliability = false;
-        public bool AllowBackloadProgress = false;
+        public bool AllowBackloadProgress = true;
         public bool ShowSpecialistSettings = false;
         public bool ExactCraftsmanship = false;
         public bool AutoGenerate = false;
         public bool AutoSwitch = false;
         public bool AutoSwitchOnAll = false;
+        public bool AutoSwitchOverManual = true;
         public int MaximumThreads = 0;
         public bool GenerateOnExperts = false;
         public int TimeOutMins = 1;
@@ -425,6 +509,7 @@ namespace Artisan.CraftingLogic.Solvers
             {
                 ImGui.Indent();
                 changed |= ImGui.Checkbox($"Apply to all valid crafts", ref AutoSwitchOnAll);
+                changed |= ImGui.Checkbox("Apply over crafts that already have a macro assigned to them", ref AutoSwitchOverManual);
                 ImGui.Unindent();
             }
 

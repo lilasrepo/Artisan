@@ -24,10 +24,10 @@ public static class CraftingProcessor
     public delegate void SolverFailedDelegate(Lumina.Excel.Sheets.Recipe recipe, string reason);
     public static event SolverFailedDelegate? SolverFailed; // craft started, but solver couldn't
 
-    public delegate void SolverFinishedDelegate(Lumina.Excel.Sheets.Recipe recipe, SolverRef solver, CraftState craft, StepState finalStep);
+    public delegate void SolverFinishedDelegate(Lumina.Excel.Sheets.Recipe? recipe, SolverRef solver, CraftState craft, StepState finalStep);
     public static event SolverFinishedDelegate? SolverFinished;
 
-    public delegate void RecommendationReadyDelegate(Lumina.Excel.Sheets.Recipe recipe, SolverRef solver, CraftState craft, StepState step, Solver.Recommendation recommendation);
+    public delegate void RecommendationReadyDelegate(Lumina.Excel.Sheets.Recipe? recipe, SolverRef solver, CraftState craft, StepState step, Solver.Recommendation recommendation);
     public static event RecommendationReadyDelegate? RecommendationReady;
 
     public static List<ISolverDefinition> SolverDefinitions = new();
@@ -152,25 +152,25 @@ public static class CraftingProcessor
             RecommendationReady?.Invoke(recipe, ActiveSolver, craft, initialStep, _nextRec);
     }
 
-    private static void OnCraftAdvanced(Lumina.Excel.Sheets.Recipe recipe, CraftState craft, StepState step)
+    private static void OnCraftAdvanced(Lumina.Excel.Sheets.Recipe? recipe, CraftState craft, StepState step)
     {
-        Svc.Log.Debug($"[CProc] OnCraftAdvanced #{recipe.RowId} (solver={ActiveSolver.Name}): {step}");
+        Svc.Log.Debug($"[CProc] OnCraftAdvanced #{recipe?.RowId} (solver={ActiveSolver.Name}): {step}");
         if (_activeSolver == null)
             return;
         if (_nextRec.Action != Skills.None && _nextRec.Action != step.PrevComboAction)
             Svc.Log.Warning($"Previous action was different from recommendation: recommended {_nextRec.Action}, used {step.PrevComboAction}");
 
         _nextRec = _activeSolver.Solve(craft, step);
-        Svc.Log.Debug($"Next rec is: {_nextRec.Action}");
+        Svc.Log.Debug($"Next rec is: {_nextRec.Action} on {_nextRec.Comment}");
         if (Simulator.CannotUseAction(craft, step, _nextRec.Action, out string reason))
             DuoLog.Error($"Unable to use {_nextRec.Action.NameOfAction()}: {reason}");
         if (_nextRec.Action != Skills.None)
             RecommendationReady?.Invoke(recipe, ActiveSolver, craft, step, _nextRec);
     }
 
-    private static void OnCraftFinished(Lumina.Excel.Sheets.Recipe recipe, CraftState craft, StepState finalStep, bool cancelled)
+    private static void OnCraftFinished(Lumina.Excel.Sheets.Recipe? recipe, CraftState craft, StepState finalStep, bool cancelled)
     {
-        Svc.Log.Debug($"[CProc] OnCraftFinished #{recipe.RowId} (cancel={cancelled}, solver={ActiveSolver.Name}): {finalStep}");
+        Svc.Log.Debug($"[CProc] OnCraftFinished #{recipe?.RowId} (cancel={cancelled}, solver={ActiveSolver.Name}): {finalStep}");
         if (_activeSolver == null)
             return;
         if (!cancelled && _nextRec.Action != Skills.None && _nextRec.Action != finalStep.PrevComboAction)

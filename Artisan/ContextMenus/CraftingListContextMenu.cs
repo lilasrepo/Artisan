@@ -13,6 +13,7 @@ using Dalamud.Game.Gui.ContextMenu;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using System.Collections.Generic;
 using OtterGui.Extensions;
+using ECommons;
 
 namespace Artisan.ContextMenus;
 
@@ -94,7 +95,7 @@ internal static class CraftingListContextMenu
 
             args.AddMenuItem(menuItem);
 
-            if (!LuminaSheets.RecipeSheet.Values.FindFirst(x => x.ItemResult.RowId == itemId, out var recipe)) return;
+            if (!LuminaSheets.RecipeSheet.Values.TryGetFirst(x => x.ItemResult.RowId == itemId, out var recipe)) return;
 
             bool ingredientsSubCraft = recipe.Ingredients().Any(x => CraftingListHelpers.GetIngredientRecipe(x.Item.RowId) != null);
 
@@ -132,7 +133,7 @@ internal static class CraftingListContextMenu
                 args.AddMenuItem(menuItem);
             }
 
-            if (!LuminaSheets.RecipeSheet.Values.FindFirst(x => x.ItemResult.RowId == ItemId, out var recipe)) return;
+            if (!LuminaSheets.RecipeSheet.Values.TryGetFirst(x => x.ItemResult.RowId == ItemId, out var recipe)) return;
 
             bool ingredientsSubCraft = recipe.Ingredients().Any(x => CraftingListHelpers.GetIngredientRecipe(x.Item.RowId) != null);
 
@@ -309,7 +310,7 @@ internal static class CraftingListContextMenu
     private static void AddToList(uint ItemId, uint craftType, bool withPrecraft = false)
     {
         CraftingListUI.listMaterialsNew.Clear();
-        if (!LuminaSheets.RecipeSheet.Values.FindFirst(x => x.ItemResult.RowId == ItemId && x.CraftType.RowId == craftType, out var recipe))
+        if (!LuminaSheets.RecipeSheet.Values.TryGetFirst(x => x.ItemResult.RowId == ItemId && x.CraftType.RowId == craftType, out var recipe))
         {
             recipe = LuminaSheets.RecipeSheet.Values.First(x => x.ItemResult.RowId == ItemId);
         }

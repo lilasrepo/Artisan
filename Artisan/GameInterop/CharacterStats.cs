@@ -177,6 +177,7 @@ public unsafe struct CharacterStats
     {
         var stats = new CharacterStats();
 
+        stats.Level = CharacterInfo.CharacterLevel ?? 0;
         stats.Craftsmanship = CharacterInfo.Craftsmanship;
         stats.Control = CharacterInfo.Control;
         stats.CP = (int)CharacterInfo.MaxCP;
@@ -256,7 +257,7 @@ public unsafe struct CharacterStats
         Specialist |= slot == 13; // specialist == job crystal equipped
     }
 
-    public void AddConsumables(ConsumableStats food, ConsumableStats pot, Dalamud.Game.ClientState.Statuses.Status fcCraftBuff)
+    public void AddConsumables(ConsumableStats food, ConsumableStats pot, Dalamud.Game.ClientState.Statuses.Status? fcCraftBuff)
     {
         Craftsmanship += food.EffectiveValue(CharacterStatsUtils.Stat.Craftsmanship, Craftsmanship) + pot.EffectiveValue(CharacterStatsUtils.Stat.Craftsmanship, Craftsmanship) + (fcCraftBuff != null ? fcCraftBuff.Param : 0);
         Control += food.EffectiveValue(CharacterStatsUtils.Stat.Control, Control) + pot.EffectiveValue(CharacterStatsUtils.Stat.Control, Control);

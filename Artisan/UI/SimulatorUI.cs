@@ -1,4 +1,4 @@
-using Artisan.Autocraft;
+﻿using Artisan.Autocraft;
 using Artisan.CraftingLogic;
 using Artisan.CraftingLogic.Solvers;
 using Artisan.GameInterop;
@@ -369,7 +369,7 @@ namespace Artisan.UI
         {
             Vector2 childSize = new Vector2((widgetSize + ImGui.GetStyle().ItemSpacing.X) * itemCount + ImGui.GetStyle().WindowPadding.X, (ImGui.GetTextLineHeightWithSpacing() + (widgetSize + ImGui.GetStyle().WindowPadding.Y) + 12f));
             ImGui.BeginChild(label, childSize, true);
-            ImGuiEx.ImGuiLineCentered($"{label}", () => ImGuiEx.TextUnderlined($"{label}"));
+            ImGuiEx.LineCentered($"{label}", () => ImGuiEx.TextUnderlined($"{label}"));
             func();
             ImGui.EndChild();
         }
@@ -966,11 +966,11 @@ namespace Artisan.UI
                 var percentage = Math.Clamp((double)startingQuality / max * 100, 0, 100);
                 var hqChance = Calculations.GetHQChance(percentage);
 
-                ImGuiEx.ImGuiLineCentered("StartingQuality", () =>
+                ImGuiEx.LineCentered("StartingQuality", () =>
                 {
                     ImGuiEx.Text($"Starting Quality: {startingQuality} / {max} ({hqChance}% HQ chance, {percentage.ToString("N0")}% quality)");
                 });
-                ImGuiEx.ImGuiLineCentered("ExpertInfo", () =>
+                ImGuiEx.LineCentered("ExpertInfo", () =>
                 {
                     ImGuiEx.Text($"{(SelectedRecipe.Value.IsExpert ? "Expert Recipe" : SelectedRecipe.Value.SecretRecipeBook.RowId > 0 ? "Master Recipe" : "Normal Recipe")}");
                 });
@@ -991,7 +991,7 @@ namespace Artisan.UI
             if (!group)
                 return;
 
-            ImGuiEx.ImGuiLineCentered("###LayoutIngredients", () => ImGuiEx.TextUnderlined("Ingredient Layouts"));
+            ImGuiEx.LineCentered("###LayoutIngredients", () => ImGuiEx.TextUnderlined("Ingredient Layouts"));
             using var table = ImRaii.Table("###SimulatorRecipeIngredients", 3, ImGuiTableFlags.Borders | ImGuiTableFlags.NoHostExtendX);
             if (!table)
                 return;
@@ -1007,7 +1007,7 @@ namespace Artisan.UI
             {
                 if (ingredientLayouts.TryGetValue(SelectedRecipe.Value.RowId, out var layouts))
                 {
-                    if (layouts.FindFirst(x => x.ID == i.Item.RowId, out var layout))
+                    if (layouts.TryGetFirst(x => x.ID == i.Item.RowId, out var layout))
                     {
                         ImGui.TableNextRow();
                         var item = LuminaSheets.ItemSheet[i.Item.RowId];

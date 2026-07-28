@@ -1,4 +1,4 @@
-using Artisan.Autocraft;
+﻿using Artisan.Autocraft;
 using Artisan.CraftingLists;
 using Artisan.CraftingLogic;
 using Artisan.GameInterop.CSExt;

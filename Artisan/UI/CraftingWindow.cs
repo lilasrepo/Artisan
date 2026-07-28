@@ -38,6 +38,13 @@ namespace Artisan.UI
             CraftingProcessor.SolverFailed += OnSolverFailed;
             CraftingProcessor.SolverFinished += OnSolverFinished;
             CraftingProcessor.RecommendationReady += OnRecommendationReady;
+
+            this.TitleBarButtons.Add(new()
+            {
+                Icon = FontAwesomeIcon.Cog,
+                ShowTooltip = () => ImGuiEx.SetTooltip("Open Config"),
+                Click = (x) => P.PluginUi.IsOpen = true,
+            });
         }
 
         public void Dispose()
@@ -50,7 +57,9 @@ namespace Artisan.UI
 
         public override bool DrawConditions()
         {
-            return P.PluginUi.CraftingVisible;
+            bool crafting = Crafting.CurState is Crafting.State.InProgress or Crafting.State.QuickCraft or Crafting.State.WaitAction;
+            bool waitingForRaph = RaphaelCache.InProgressAny() && Crafting.CurState is Crafting.State.WaitStart;
+            return crafting || waitingForRaph;
         }
 
         public override void PreDraw()
@@ -73,13 +82,14 @@ namespace Artisan.UI
 
         public override void Draw()
         {
+            if (RaphaelCache.InProgressAny())
+            {
+                ImGuiEx.TextWrapped(ImGuiColors.DalamudYellow, "Raphael is generating. Please wait...");
+                return;
+            }
+
             if (!P.Config.DisableHighlightedAction)
                 Hotbars.MakeButtonsGlow(CraftingProcessor.NextRec.Action);
-
-            if (ImGuiEx.AddHeaderIcon("OpenConfig", FontAwesomeIcon.Cog, new ImGuiEx.HeaderIconOptions() { Tooltip = "Open Config" }))
-            {
-                P.PluginUi.IsOpen = true;
-            }
 
             if (Crafting.CurCraft != null && !Crafting.CurCraft.CraftExpert && Crafting.CurRecipe?.SecretRecipeBook.RowId > 0 && Crafting.CurCraft?.CraftLevel == Crafting.CurCraft?.StatLevel && !CraftingProcessor.ActiveSolver.IsType<MacroSolver>())
             {
@@ -184,12 +194,12 @@ namespace Artisan.UI
             DuoLog.Error(text);
         }
 
-        private void OnSolverFinished(Lumina.Excel.Sheets.Recipe recipe, SolverRef solver, CraftState craft, StepState finalStep)
+        private void OnSolverFinished(Lumina.Excel.Sheets.Recipe? recipe, SolverRef solver, CraftState craft, StepState finalStep)
         {
             _estimatedCraftEnd = default;
         }
 
-        private void OnRecommendationReady(Lumina.Excel.Sheets.Recipe recipe, SolverRef solver, CraftState craft, StepState step, Solver.Recommendation recommendation)
+        private void OnRecommendationReady(Lumina.Excel.Sheets.Recipe? recipe, SolverRef solver, CraftState craft, StepState step, Solver.Recommendation recommendation)
         {
             if (!Simulator.CanUseAction(craft, step, recommendation.Action))
             {

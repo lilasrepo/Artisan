@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Artisan.CraftingLogic;
 using Artisan.GameInterop;
 using Artisan.RawInformation;
@@ -17,10 +17,9 @@ namespace Artisan.UI
     {
 
         private static RecipeConfig DummyConfig = new();
-        private static ISolverDefinition.Desc? selectedSolver;
         private static int quickAssignLevel = 1;
 
-        private static IEnumerable<Lumina.Excel.Sheets.Recipe> filteredRecipes;
+        private static IEnumerable<Lumina.Excel.Sheets.Recipe>? filteredRecipes;
 
         private static List<int> quickAssignPossibleDifficulties = new();
         private static int quickAssignDifficultyIndex;
@@ -52,7 +51,7 @@ namespace Artisan.UI
 
         private static void DrawAssignables()
         {
-            if (filteredRecipes.Count() == 0)
+            if (filteredRecipes!.Count() == 0)
                 return;
 
             ImGui.Spacing();

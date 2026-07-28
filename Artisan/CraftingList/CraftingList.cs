@@ -472,7 +472,7 @@ namespace Artisan.CraftingLists
             return count;
         }
 
-        public static unsafe bool SetIngredients(EnduranceIngredients[]? setIngredients = null)
+        public static unsafe bool SetIngredients(EnduranceIngredients[]? setIngredients = null, uint? debugOverride = null)
         {
             var recipe = Operations.GetSelectedRecipeEntry();
             if (recipe == null)
@@ -497,39 +497,44 @@ namespace Artisan.CraftingLists
             {
                 if (setIngredients == null || Endurance.IPCOverride)
                 {
-                    for (int i = 0; i <= 5; i++)
+                    //TODO: this needs rewrite
+                    for(uint i = 0; i <= 5; i++)
                     {
                         try
                         {
-                            var node = addon->AtkUnitBase.UldManager.NodeList[23 - i]->GetAsAtkComponentNode();
+                            var node = addon->GetComponentNodeById(89 + i);// AtkUnitBase.UldManager.NodeList[23 - i]->GetAsAtkComponentNode();
 
                             if (node is null || !node->AtkResNode.IsVisible())
                             {
                                 continue;
                             }
 
-                            if (node->Component->UldManager.NodeList[11]->IsVisible())
+                            if (node->Component->GetNodeById(7)->IsVisible()) //11
                             {
-                                var ingredient = LuminaSheets.RecipeSheet.Values.Where(x => x.RowId == Endurance.RecipeID).FirstOrDefault().Ingredients().ElementAt(i).Item;
+                                var ingredient = LuminaSheets.RecipeSheet.Values.Where(x => x.RowId == Endurance.RecipeID).FirstOrDefault().Ingredients().ElementAt((int)i).Item;
 
-                                var btn = node->Component->UldManager.NodeList[14]->GetAsAtkComponentButton();
+                                var btn = node->Component->GetNodeById(5)->GetAsAtkComponentButton();// UldManager.NodeList[14]->GetAsAtkComponentButton();
+
                                 try
                                 {
-                                    btn->ClickAddonButton((AtkComponentBase*)addon, 4, EventType.CHANGE);
+                                    btn->ClickAddonButton((AtkComponentBase*)addon, debugOverride ?? 5, EventType.CHANGE);
+                                    PluginLog.Debug("Opening context menu to select ingredient");
+
+                                    var contextMenu = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextIconMenu").Address;
+                                    if(contextMenu != null)
+                                    {
+                                        PluginLog.Debug($"Firing callback for context icon menu");
+                                        Callback.Fire(contextMenu, true, 0, 0, 0, ingredient.RowId, Callback.ZeroAtkValue);
+                                    }
                                 }
                                 catch (Exception ex)
                                 {
                                     ex.Log();
                                 }
-                                var contextMenu = (AtkUnitBase*)Svc.GameGui.GetAddonByName("ContextIconMenu").Address;
-                                if (contextMenu != null)
-                                {
-                                    Callback.Fire(contextMenu, true, 0, 0, 0, ingredient, 0);
-                                }
                             }
                             else
                             {
-                                for (int m = 0; m <= 100; m++)
+                                for(int m = 0; m <= 100; m++)
                                 {
                                     new AddonMaster.RecipeNote((IntPtr)addon).Material((uint)i, false);
                                 }
@@ -541,8 +546,9 @@ namespace Artisan.CraftingLists
                             }
 
                         }
-                        catch
+                        catch(Exception e)
                         {
+                            e.LogDebug();
                             return false;
                         }
                     }

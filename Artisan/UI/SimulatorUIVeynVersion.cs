@@ -1,4 +1,4 @@
-using Artisan.CraftingLogic;
+﻿using Artisan.CraftingLogic;
 using Artisan.GameInterop;
 using Artisan.RawInformation.Character;
 using Dalamud.Interface.Utility.Raii;

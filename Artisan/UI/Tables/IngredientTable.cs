@@ -404,7 +404,7 @@ namespace Artisan.UI.Tables
 
                         if (ImGui.IsItemClicked())
                         {
-                            Chat.Instance.SendMessage($"/li {server} mb");
+                            Chat.SendMessage($"/li {server} mb");
                         }
                     }
                 }
@@ -601,7 +601,7 @@ namespace Artisan.UI.Tables
                         foreach (var i in item.UsedInMaterialsListCount.Where(x => x.Value > 0))
                         {
                             var owned = RetainerInfo.GetRetainerItemCount(LuminaSheets.RecipeSheet[i.Key].ItemResult.RowId) + CraftingListUI.NumberOfIngredient(LuminaSheets.RecipeSheet[i.Key].ItemResult.RowId);
-                            if (SourceList.FindFirst(x => x.CraftedRecipe.RowId == i.Key, out var ingredient))
+                            if (SourceList.TryGetFirst(x => x.CraftedRecipe.RowId == i.Key, out var ingredient))
                             {
                                 sb.AppendLine($"{i.Value} less is required due to having {(owned > ingredient.Required ? "at least " : "")}{Math.Min(ingredient.Required, owned)}x {i.Key.NameOfRecipe()}");
                             }
@@ -619,7 +619,7 @@ namespace Artisan.UI.Tables
                             foreach (var m in i.Value)
                             {
                                 var owned = RetainerInfo.GetRetainerItemCount(LuminaSheets.RecipeSheet[m.Item1].ItemResult.RowId) + CraftingListUI.NumberOfIngredient(LuminaSheets.RecipeSheet[m.Item1].ItemResult.RowId);
-                                if (SourceList.FindFirst(x => x.CraftedRecipe.RowId == m.Item1, out var ingredient))
+                                if (SourceList.TryGetFirst(x => x.CraftedRecipe.RowId == m.Item1, out var ingredient))
                                 {
                                     sb.AppendLine($"└ {m.Item1.NameOfRecipe()} uses {i.Key.NameOfRecipe()}, you have {(owned > ingredient.Required ? "at least " : "")}{Math.Min(ingredient.Required, owned)} {m.Item1.NameOfRecipe()} so {m.Item2}x {item.Data.Name} less is required as a result.");
                                 }
@@ -715,7 +715,7 @@ namespace Artisan.UI.Tables
             {
                 if (ImGui.Selectable("Market Board Lookup"))
                 {
-                    Chat.Instance.SendMessage($"/pmb {item.Data.Name.ToDalamudString()}");
+                    Chat.SendMessage($"/pmb {item.Data.Name.ToDalamudString()}");
                 }
             }
         }
@@ -770,7 +770,7 @@ namespace Artisan.UI.Tables
                         idx++;
                         foreach (var ingredient in CraftingListHelpers.GetIngredientRecipe(item.Data.RowId).Value.Ingredients().Where(x => x.Amount > 0))
                         {
-                            if (Items.FindFirst(x => x.Data.RowId == ingredient.Item.RowId, out var result))
+                            if (Items.TryGetFirst(x => x.Data.RowId == ingredient.Item.RowId, out var result))
                                 FilteredItems.Add((result, idx));
                             idx++;
                         }
@@ -803,7 +803,7 @@ namespace Artisan.UI.Tables
 
                 try
                 {
-                    Chat.Instance.SendMessage($"/mloot {item.Data.Name.ToString()}");
+                    Chat.SendMessage($"/mloot {item.Data.Name.ToString()}");
                 }
                 catch (Exception e)
                 {
@@ -876,9 +876,9 @@ namespace Artisan.UI.Tables
                 try
                 {
                     if (LuminaSheets.GatheringItemSheet!.Any(x => x.Value.Item.RowId == item.Data.RowId))
-                        Chat.Instance.SendMessage($"/gather {item.Data.Name.ToString()}");
+                        Chat.SendMessage($"/gather {item.Data.Name.ToString()}");
                     else
-                        Chat.Instance.SendMessage($"/gatherfish {item.Data.Name.ToString()}");
+                        Chat.SendMessage($"/gatherfish {item.Data.Name.ToString()}");
                 }
                 catch (Exception e)
                 {

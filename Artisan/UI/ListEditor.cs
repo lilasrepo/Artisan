@@ -1,4 +1,4 @@
-namespace Artisan.UI;
+﻿namespace Artisan.UI;
 
 using Autocraft;
 using CraftingLists;
@@ -40,7 +40,7 @@ internal class ListEditor : Window, IDisposable
 {
     public bool Minimized = false;
 
-    private Task RegenerateTask = null;
+    private Task? RegenerateTask = null;
     private CancellationTokenSource source = new CancellationTokenSource();
     private CancellationToken token;
 
@@ -1384,7 +1384,7 @@ internal class RecipeSelector : ItemSelector<ListItem>
         }
         else
         {
-            if (LuminaSheets.RecipeSheet.Values.FindFirst(
+            if (LuminaSheets.RecipeSheet.Values.TryGetFirst(
                     x => x.ItemResult.Value.Name.ToDalamudString().ToString().Equals(name, StringComparison.CurrentCultureIgnoreCase),
                     out var recipe))
             {
@@ -1486,7 +1486,7 @@ internal class ListFolders : ItemSelector<NewCraftingList>
 
     protected override bool OnDelete(int idx)
     {
-        if (P.ws.Windows.FindFirst(
+        if (P.ws.Windows.TryGetFirst(
                 x => x.WindowName.Contains(CraftingListUI.selectedList.ID.ToString()) && x.GetType() == typeof(ListEditor),
                 out var window))
         {
@@ -1518,7 +1518,7 @@ internal class ListFolders : ItemSelector<NewCraftingList>
             }
             else
             {
-                P.ws.Windows.FindFirst(
+                P.ws.Windows.TryGetFirst(
                     x => x.WindowName.Contains(P.Config.NewCraftingLists[idx].ID.ToString()),
                     out var window);
                 window.BringToFront();

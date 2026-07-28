@@ -20,6 +20,8 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using ThreadLoadImageHandler = ECommons.ImGuiMethods.ThreadLoadImageHandler;
+using ECommons.Automation;
+using ECommons.WindowsFormsReflector;
 
 namespace Artisan.UI
 {
@@ -59,6 +61,12 @@ namespace Artisan.UI
                 MinimumSize = new(250, 100),
                 MaximumSize = new(9999, 9999)
             };
+            this.TitleBarButtons.Add(new()
+            {
+                Icon = FontAwesomeIcon.Cog,
+                ShowTooltip = () => ImGuiEx.SetTooltip("Open Config"),
+                Click = (x) => P.PluginUi.IsOpen = true,
+            });
             P.ws.AddWindow(this);
         }
 
@@ -201,13 +209,20 @@ namespace Artisan.UI
 
 
 #if DEBUG
-                        ImGui.Spacing();
-                        if (ImGui.Selectable("DEBUG", OpenWindow == OpenWindow.Debug))
-                        {
-                            OpenWindow = OpenWindow.Debug;
-                        }
-                        ImGui.Spacing();
+                        drawDebugTab();
+#else
+                        if(GenericHelpers.IsKeyPressed(Keys.LControlKey) && GenericHelpers.IsKeyPressed(Keys.LShiftKey)) drawDebugTab();
 #endif
+                        void drawDebugTab()
+                        {
+                            ImGui.Spacing();
+                            if(ImGui.Selectable("DEBUG", OpenWindow == OpenWindow.Debug))
+                            {
+                                OpenWindow = OpenWindow.Debug;
+                            }
+                            ImGui.Spacing();
+                        }
+
 
                     }
 
@@ -595,11 +610,14 @@ namespace Artisan.UI
 
                 if (ImGui.Checkbox("Play Sound After Endurance Is Complete", ref P.Config.PlaySoundFinishEndurance))
                     P.Config.Save();
+                
+                if (ImGui.Checkbox("Play Sound After Crafting Has Errored", ref P.Config.PlaySoundError))
+                    P.Config.Save();
 
                 if (ImGui.Checkbox($"Play Sound After List Is Complete", ref P.Config.PlaySoundFinishList))
                     P.Config.Save();
 
-                if (P.Config.PlaySoundFinishEndurance || P.Config.PlaySoundFinishList)
+                if (P.Config.PlaySoundFinishEndurance || P.Config.PlaySoundFinishList || P.Config.PlaySoundError)
                 {
                     if (ImGui.SliderFloat("Sound Volume", ref P.Config.SoundVolume, 0f, 1f, "%.2f"))
                         P.Config.Save();
@@ -689,8 +707,10 @@ namespace Artisan.UI
 
                 if (ImGui.Checkbox($"Use Material Miracle when available", ref P.Config.UseMaterialMiracle))
                     P.Config.Save();
-
                 ImGuiComponents.HelpMarker($"This will switch the Standard Recipe Solver over to the Expert Solver for the duration of the buff. This will not give you proper simulator results as it's a timed buff, not a permanent one with stacks, so we can't really simulate it properly.");
+				ImGui.PushItemWidth(250);
+				if (ImGui.SliderInt($"Minimum steps to execute before trying Material Miracle###P.Config.MinimumStepsBeforeMiracle", ref P.Config.MinimumStepsBeforeMiracle, 0, 20))
+					P.Config.Save();
 
                 if (P.Config.UseMaterialMiracle)
                 {
@@ -972,7 +992,7 @@ namespace Artisan.UI
 
                 if (ThreadLoadImageHandler.TryGetTextureWrap(imagePath, out var img))
                 {
-                    ImGuiEx.ImGuiLineCentered("###EnduranceNewSetting", () =>
+                    ImGuiEx.LineCentered("###EnduranceNewSetting", () =>
                     {
                         ImGui.Image(img.Handle, new Vector2(img.Width, img.Height));
                     });

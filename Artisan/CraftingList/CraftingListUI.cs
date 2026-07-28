@@ -1,4 +1,4 @@
-using Artisan.Autocraft;
+﻿using Artisan.Autocraft;
 using Artisan.CraftingLogic;
 using Artisan.GameInterop;
 using Artisan.IPC;
@@ -171,7 +171,7 @@ namespace Artisan.CraftingLists
                 selectedList.ExpandedList.AddRange(Enumerable.Repeat(r.ID, r.Quantity));
             }
 
-            if (P.ws.Windows.FindFirst(x => x.WindowName.Contains(selectedList.ID.ToString(), StringComparison.CurrentCultureIgnoreCase), out var window))
+            if (P.ws.Windows.TryGetFirst(x => x.WindowName.Contains(selectedList.ID.ToString(), StringComparison.CurrentCultureIgnoreCase), out var window))
                 window.IsOpen = false;
 
 
@@ -181,7 +181,7 @@ namespace Artisan.CraftingLists
             Endurance.ToggleEndurance(false);
         }
 
-        public static void UpdateListTimer(Recipe recipe, CraftState craft, StepState finalStep, bool cancelled)
+        public static void UpdateListTimer(Recipe? recipe, CraftState craft, StepState finalStep, bool cancelled)
         {
             Task.Run(() =>
             {

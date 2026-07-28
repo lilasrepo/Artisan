@@ -1,4 +1,4 @@
-# Artisan（繁中移植版 · TC13） / Traditional-Chinese Port
+﻿# Artisan（繁中移植版 · TC13） / Traditional-Chinese Port
 
 > 一個「簡單」的製作插件。<br>
 > A "simple" crafting plugin.

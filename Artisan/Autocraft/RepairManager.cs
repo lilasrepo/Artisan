@@ -1,4 +1,4 @@
-﻿using Artisan.CraftingLists;
+using Artisan.CraftingLists;
 using Artisan.GameInterop;
 using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
@@ -39,7 +39,7 @@ namespace Artisan.Autocraft
                 addon->AtkUnitBase.IsVisible &&
                 addon->YesButton is not null &&
                 addon->YesButton->IsEnabled &&
-                addon->AtkUnitBase.UldManager.NodeList[15]->IsVisible())
+                addon->AtkUnitBase.GetNodeById(2)->IsVisible())
             {
                 new AddonMaster.SelectYesno((IntPtr)addon).Yes();
             }
@@ -134,7 +134,7 @@ namespace Artisan.Autocraft
             return false;
         }
 
-        internal static bool RepairNPCNearby(out IGameObject npc)
+        internal static bool RepairNPCNearby(out IGameObject? npc)
         {
             npc = null;
             if (Svc.ClientState.LocalPlayer != null)
@@ -167,12 +167,12 @@ namespace Artisan.Autocraft
         }
         internal static bool InteractWithRepairNPC()
         {
-            if (RepairNPCNearby(out IGameObject npc))
+            if (RepairNPCNearby(out IGameObject? npc))
             {
                 TargetSystem.Instance()->OpenObjectInteraction(npc.Struct());
                 if (TryGetAddonByName<AddonSelectIconString>("SelectIconString", out var addonSelectIconString))
                 {
-                    var index = GenericHelpers.IndexOf(Svc.Data.Excel.GetSheet<ENpcBase>().GetRow(npc.DataId).ENpcData, x => x.RowId == 720915);
+                    var index = GenericHelpers.IndexOf(Svc.Data.Excel.GetSheet<ENpcBase>().GetRow(npc.BaseId).ENpcData, x => x.RowId == 720915);
                     Callback.Fire(&addonSelectIconString->AtkUnitBase, true, index);
                 }
 

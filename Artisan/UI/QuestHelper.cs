@@ -7,6 +7,7 @@ using Dalamud.Interface.Windowing;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Dalamud.Bindings.ImGui;
 using System;
+using ECommons;
 
 namespace Artisan.UI
 {
@@ -98,7 +99,7 @@ namespace Artisan.UI
 
                     if (QuestList.EmoteQuests.TryGetValue(quest.QuestId, out var data))
                     {
-                        if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[data.NPCDataId].Singular.ExtractText()} and do {data.Emote}"))
+                        if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[data.NPCDataId].Singular.GetText()} and do {data.Emote}"))
                         {
                             QuestList.DoEmoteQuest(quest.QuestId);
                         }
@@ -109,7 +110,7 @@ namespace Artisan.UI
                         {
                             if (QuestList.EmoteQuests.TryGetValue(9998, out var npc1))
                             {
-                                if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc1.NPCDataId].Singular.ExtractText()} and do {npc1.Emote}"))
+                                if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc1.NPCDataId].Singular.GetText()} and do {npc1.Emote}"))
                                 {
                                     QuestList.DoEmoteQuest(9998);
                                 }
@@ -117,7 +118,7 @@ namespace Artisan.UI
 
                             if (QuestList.EmoteQuests.TryGetValue(9999, out var npc2))
                             {
-                                if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc2.NPCDataId].Singular.ExtractText()} and do {npc2.Emote}"))
+                                if (ImGui.Button($@"Target {LuminaSheets.ENPCResidentSheet[npc2.NPCDataId].Singular.GetText()} and do {npc2.Emote}"))
                                 {
                                     QuestList.DoEmoteQuest(9999);
                                 }

@@ -183,7 +183,7 @@ namespace Artisan.UI
                         ImGui.TableNextColumn();
                         ImGui.Text($"{v.requiredSquadronManual}");
                         ImGui.TableNextColumn();
-                        ImGui.Text($"{v.SolverType}");
+                        ImGui.Text($"{v.SolverType.Split('.').Last()}");
                         ImGui.TableNextColumn();
                         ImGui.Text($"{v.SolverFlavour}");
                     }
@@ -408,9 +408,11 @@ namespace Artisan.UI
                     Svc.Log.Debug($"State of Auto-Fill Numeric Dialogs after setting: {state}");
                 }
 
+                ref var debugOverrideValue = ref Ref<int>.Get("dov", -1);
+                ImGui.InputInt("dov", ref debugOverrideValue);
                 if (ImGui.Button("Set Ingredients"))
                 {
-                    CraftingListFunctions.SetIngredients();
+                    CraftingListFunctions.SetIngredients(debugOverride: debugOverrideValue == -1?null: (uint)debugOverrideValue);
                 }
 
                 if (TryGetAddonByName<AtkUnitBase>("RetainerHistory", out var addon))
