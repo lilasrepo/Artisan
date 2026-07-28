@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using static FFXIVClientStructs.FFXIV.Client.UI.Misc.DataCenterHelper;
 
 namespace ECommons.ExcelServices;
 #nullable disable
@@ -66,9 +67,14 @@ public static class ExcelWorldHelper
         return Svc.Data.GetExcelSheet<World>().Where(x => x.IsPublic() && (region == null || x.GetRegion() == region.Value)).ToArray();
     }
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="dataCenter">0 - all data centers<param>
+    /// <returns></returns>
     public static World[] GetPublicWorlds(uint dataCenter)
     {
-        return Svc.Data.GetExcelSheet<World>().Where(x => x.IsPublic() && x.DataCenter.RowId == dataCenter).ToArray();
+        return Svc.Data.GetExcelSheet<World>().Where(x => x.IsPublic() && (dataCenter == 0 || x.DataCenter.RowId == dataCenter)).ToArray();
     }
 
     public static WorldDCGroupType[] GetDataCenters(Region? region = null, bool checkForPublicWorlds = false)
@@ -87,6 +93,7 @@ public static class ExcelWorldHelper
     {
         return Svc.Data.GetExcelSheet<World>().GetRowOrDefault(id);
     }
+    public static World? Get(int id) => Get((uint)id);
 
     [Obsolete("Please use GetName")]
     public static string GetWorldNameById(uint id) => GetName(id);

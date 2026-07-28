@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
+using TerraFX.Interop.WinRT;
 using static Dalamud.Plugin.Services.ITextureProvider;
 using static ECommons.GenericHelpers;
 
@@ -24,6 +25,11 @@ public class ThreadLoadImageHandler
     private static readonly List<Func<byte[], byte[]>> _conversionsToBitmap = [b => b,];
     private static volatile bool ThreadRunning = false;
     internal static HttpClient httpClient = null;
+
+    /// <summary>
+    /// Override error action if you wish. Will be executed on non-game main thread.
+    /// </summary>
+    public static Action<Exception?, string?>? ErrorAction = null;
 
     /// <summary>
     /// Clears and disposes all cached resources. You can use it to free up memory once you think textures that you have previously loaded won't be needed for a while or to trigger a complete reload.
@@ -96,11 +102,11 @@ public class ThreadLoadImageHandler
         new Thread(() =>
         {
             var idleTicks = 0;
-            Safe(delegate
+            try
             {
                 while(idleTicks < 100)
                 {
-                    Safe(delegate
+                    try
                     {
                         {
                             if(CachedTextures.TryGetFirst(x => x.Value.IsCompleted == false, out var keyValuePair))
@@ -130,8 +136,16 @@ public class ThreadLoadImageHandler
                                             exceptions.Add(ex);
                                         }
                                     }
-                                    PluginLog.Error($"While loading {keyValuePair.Key} an exception occurred:");
-                                    exceptions.Each(x => x.Log());
+                                    if(ErrorAction != null)
+                                    {
+                                        ErrorAction(null, $"While loading {keyValuePair.Key} an exception occurred:");
+                                        exceptions.Each(x => ErrorAction(x, null));
+                                    }
+                                    else
+                                    {
+                                        PluginLog.Error($"While loading {keyValuePair.Key} an exception occurred:");
+                                        exceptions.Each(x => x.Log());
+                                    }
                                 Success:
                                     keyValuePair.Value.TextureWrap = texture;
                                 }
@@ -157,11 +171,33 @@ public class ThreadLoadImageHandler
                                 keyValuePair.Value.ImmediateTexture = Svc.Texture.GetFromGameIcon(new(keyValuePair.Key.ID, hiRes: keyValuePair.Key.HQ));
                             }
                         }
-                    });
+                    }
+                    catch(Exception e)
+                    {
+                        if(ErrorAction != null)
+                        {
+                            ErrorAction(e, $"An error occurred while loading icon");
+                        }
+                        else
+                        {
+                            e.Log();
+                        }
+                    }
                     idleTicks++;
                     if(!CachedTextures.Any(x => x.Value.IsCompleted) && !CachedIcons.Any(x => x.Value.IsCompleted)) Thread.Sleep(100);
                 }
-            });
+            }
+            catch(Exception e)
+            {
+                if(ErrorAction != null)
+                {
+                    ErrorAction(e, $"An error occurred while running ThreadLoadImageHandler");
+                }
+                else
+                {
+                    e.Log();
+                }
+            }
             PluginLog.Verbose($"Stopping ThreadLoadImageHandler, ticks={idleTicks}");
             ThreadRunning = false;
         }).Start();

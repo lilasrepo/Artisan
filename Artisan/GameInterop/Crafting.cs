@@ -137,7 +137,16 @@ public static unsafe class Crafting
                     var hwdRow = ECommons.GenericHelpers.FindRow<HWDCrafterSupply>(x => x.HWDCrafterSupplyParams.Any(y => y.ItemTradeIn.RowId == recipe.ItemResult.RowId));
                     if (hwdRow != null)
                     {
-                        var index = hwdRow.Value.HWDCrafterSupplyParams.IndexOf(x => x.ItemTradeIn.RowId == recipe.ItemResult.RowId);
+                        // DLLSET-RECHECK(api13 official 13.0.0.16 / Lumina preview.0.386): Collection<T>'s surface is a
+                        // Lumina-version fact, not an API-level one. Re-judged 2026-07-28 on the official set:
+                        // Lumina.Excel.Collection<T> still declares exactly one IndexOf overload, IndexOf(T) -- unchanged
+                        // from the preview set, so the workaround below stands.
+                        // porting-note(api13): Lumina's Collection<T> no longer carries a
+                        // predicate IndexOf overload, so this bound to IndexOf(T) and failed.
+                        // FindRow above already guarantees a match, so First is safe.
+                        var index = hwdRow.Value.HWDCrafterSupplyParams
+                            .Select((x, i) => (Param: x, Index: i))
+                            .First(p => p.Param.ItemTradeIn.RowId == recipe.ItemResult.RowId).Index;
                         res.CraftQualityMin1 = hwdRow.Value.HWDCrafterSupplyParams[index].BaseCollectableRating * 10;
                         res.CraftQualityMin2 = hwdRow.Value.HWDCrafterSupplyParams[index].MidCollectableRating * 10;
                         res.CraftQualityMin3 = hwdRow.Value.HWDCrafterSupplyParams[index].HighCollectableRating * 10;
@@ -457,7 +466,7 @@ public static unsafe class Crafting
 
     private static AddonSynthesis* GetAddon()
     {
-        var synthWindow = (AddonSynthesis*)Svc.GameGui.GetAddonByName("Synthesis");
+        var synthWindow = (AddonSynthesis*)Svc.GameGui.GetAddonByName("Synthesis").Address;
         if (synthWindow == null)
             return null; // not ready
 
@@ -472,7 +481,7 @@ public static unsafe class Crafting
 
     public static AtkUnitBase* GetCosmicAddon()
     {
-        var cosmicAddon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("WKSRecipeNotebook");
+        var cosmicAddon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("WKSRecipeNotebook").Address;
         if (cosmicAddon == null || !cosmicAddon->IsVisible || !cosmicAddon->IsReady)
             return null; // not ready
 
@@ -481,7 +490,7 @@ public static unsafe class Crafting
 
     private static AtkUnitBase* GetQuickSynthAddon()
     {
-        var addon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("SynthesisSimple");
+        var addon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("SynthesisSimple").Address;
         if (addon == null)
             return null;
 

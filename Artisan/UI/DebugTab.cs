@@ -21,13 +21,17 @@ using FFXIVClientStructs.FFXIV.Client.Game.WKS;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using ImGuiNET;
+using Dalamud.Bindings.ImGui;
 using Lumina;
 using Lumina.Excel.Sheets;
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using static ECommons.GenericHelpers;
+// porting-note(api13): FFXIVClientStructs 6966 added FFXIV.Client.Game.RepairManager, which now
+// collides with Artisan's own static helper of the same name. Every call site below is Artisan's
+// (ProcessRepair / GetMinEquippedPercent / CanRepairItem / ...), so alias to ours.
+using RepairManager = Artisan.Autocraft.RepairManager;
 
 namespace Artisan.UI
 {

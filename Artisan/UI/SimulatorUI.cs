@@ -12,7 +12,7 @@ using ECommons.DalamudServices;
 using ECommons.ExcelServices;
 using ECommons.ImGuiMethods;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
-using ImGuiNET;
+using Dalamud.Bindings.ImGui;
 using Lumina.Excel.Sheets;
 using Microsoft.CodeAnalysis;
 using OtterGui;
@@ -22,6 +22,7 @@ using System.Linq;
 using System.Numerics;
 using static FFXIVClientStructs.FFXIV.Client.UI.Misc.RaptureGearsetModule;
 using Condition = Artisan.CraftingLogic.CraftData.Condition;
+using OtterGui.Extensions;
 
 namespace Artisan.UI
 {
@@ -283,7 +284,7 @@ namespace Artisan.UI
 
             if (_selectedCraft != null && _simCurSteps != null && _simCurSteps.Count > 0)
             {
-                ImGui.Columns(16, null, false);
+                ImGui.Columns(16, default, false);
                 var job = Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId;
                 for (int i = 0; i < _simCurSteps.Count; i++)
                 {
@@ -298,7 +299,7 @@ namespace Artisan.UI
                         var currentAction = _simCurSteps[i + 1].step.PrevComboAction;
                         var step = _simCurSteps[i + 1].step;
                         var x = ImGui.GetCursorPosX();
-                        ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.ImGuiHandle, new Vector2(widgetSize), new Vector2(), new Vector2(1, 1), highlightLast ? new Vector4(0f, 0.75f, 0.25f, 1f) : new Vector4(1f, 1f, 1f, 1f));
+                        ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.Handle, new Vector2(widgetSize), new Vector2(), new Vector2(1, 1), highlightLast ? new Vector4(0f, 0.75f, 0.25f, 1f) : new Vector4(1f, 1f, 1f, 1f));
                         if (ImGui.IsItemHovered())
                         {
                             ImGui.BeginTooltip();
@@ -438,7 +439,7 @@ namespace Artisan.UI
         private static void DrawActionWidget(Skills action)
         {
             var icon = P.Icons.TryLoadIconAsync(action.IconOfAction(Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId)).Result;
-            ImGui.Image(icon.ImGuiHandle, new Vector2(widgetSize));
+            ImGui.Image(icon.Handle, new Vector2(widgetSize));
 
             var nextstep = Simulator.Execute(_selectedCraft, _simCurSteps.Last().step, action, 0, 1);
 
@@ -568,7 +569,7 @@ namespace Artisan.UI
 
                 if (_simCurSolver != null && _simCurSteps.Count > 0)
                 {
-                    ImGui.Columns(Math.Min(16, _simCurSteps.Count), null, false);
+                    ImGui.Columns(Math.Min(16, _simCurSteps.Count), default, false);
                     var job = Job.CRP + (byte)SelectedRecipe.Value.CraftType.RowId;
                     for (int i = 0; i < _simCurSteps.Count; i++)
                     {
@@ -576,7 +577,7 @@ namespace Artisan.UI
                         {
                             var currentAction = _simCurSteps[i + 1].step.PrevComboAction;
                             var comment = _simCurSteps[i].comment;
-                            ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.ImGuiHandle, new Vector2(widgetSize));
+                            ImGui.Image(P.Icons.TryLoadIconAsync(currentAction.IconOfAction(job)).Result.Handle, new Vector2(widgetSize));
                             var step = _simCurSteps[i + 1].step;
                             if (ImGui.IsItemHovered())
                             {
@@ -626,7 +627,7 @@ namespace Artisan.UI
 
             ImGui.PushStyleColor(ImGuiCol.Text, successColor);
             ImGuiEx.LineCentered($"SimResults", () => ImGuiEx.TextUnderlined($"Simulator Result - {status.ToOutputString()}"));
-            ImGui.Columns(4, null, false);
+            ImGui.Columns(4, default, false);
             ImGuiEx.TextCentered($"Quality (IQ: {_simCurSteps.Last().step.IQStacks})");
             ImGuiEx.SetNextItemFullWidth();
             DrawProgress(_simCurSteps.Last().step.Quality, _selectedCraft.CraftQualityMax);
@@ -827,7 +828,7 @@ namespace Artisan.UI
                 var controlBoost = (SimFood == null ? 0 : SimFood.Stats.Stats.FirstOrDefault(x => x.Param == 71).Effective(gsStats.Control)) + (SimMedicine == null ? 0 : SimMedicine.Stats.Stats.FirstOrDefault(x => x.Param == 71).Effective(gsStats.Control));
                 var cpBoost = (SimFood == null ? 0 : SimFood.Stats.Stats.FirstOrDefault(x => x.Param == 11).Effective(gsStats.CP)) + (SimMedicine == null ? 0 : SimMedicine.Stats.Stats.FirstOrDefault(x => x.Param == 11).Effective(gsStats.CP));
 
-                ImGui.Columns(3, null, false);
+                ImGui.Columns(3, default, false);
                 ImGui.TextWrapped($"Craftsmanship: {gsStats.Craftsmanship + craftsmanshipBoost} ({gsStats.Craftsmanship} + {craftsmanshipBoost})");
                 ImGui.NextColumn();
                 ImGui.TextWrapped($"Control: {gsStats.Control + controlBoost} ({gsStats.Control} + {controlBoost})");
@@ -924,7 +925,7 @@ namespace Artisan.UI
             {
                 SimGS = null;
 
-                ImGui.Columns(4, null, false);
+                ImGui.Columns(4, default, false);
                 ImGUIMethods.InputIntBound($"Level:", ref gsLevel, 1, 100, true);
                 ImGui.NextColumn();
                 ImGUIMethods.InputIntBound($"Craftsmanship:", ref gsCraftsmanship, 1, 99999, true);
@@ -933,7 +934,7 @@ namespace Artisan.UI
                 ImGui.NextColumn();
                 ImGUIMethods.InputIntBound($"CP:", ref gsCP, 1, 99999, true);
                 ImGui.NextColumn();
-                ImGui.Columns(3, null, false);
+                ImGui.Columns(3, default, false);
                 ImGUIMethods.FlippedCheckbox($"Splendorous/Cosmic:", ref gsSplend);
                 ImGui.NextColumn();
                 ImGUIMethods.FlippedCheckbox($"Specialist:", ref gsSpecialist);

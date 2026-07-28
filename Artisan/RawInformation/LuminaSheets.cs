@@ -239,13 +239,18 @@ namespace Artisan.RawInformation
                     return false;
                 
                 //Next, find the MissionUnit that has our MissionRecipe row
-                var missionUnit = Svc.Data.GetExcelSheet<WKSMissionUnit>().First(missionUnit => missionUnit.WKSMissionRecipe == (ushort)missionRec.RowId);
+                var missionUnit = Svc.Data.GetExcelSheet<WKSMissionUnit>().First(missionUnit => missionUnit.WKSMissionRecipe.RowId == missionRec.RowId);
 
-                //Get the MissionToDo from the MissionUnit
-                var missionToDo = Svc.Data.GetExcelSheet<WKSMissionToDo>().GetRow(missionUnit.Unknown7);
-
-                //Svc.Log.Verbose($"{id} -> {missionRec.RowId} -> {missionUnit.RowId} -> {missionToDo.RowId} -> {missionToDo.Unknown0}");
-                return missionToDo.Unknown0 == (uint)Skills.MaterialMiracle;
+                // DLLSET-RECHECK(api13 official 13.0.0.16 / Lumina.Excel 7.3.1): if a future Lumina stops naming
+                // MissionToDo, this reverts to an index scan. Re-judged 2026-07-28: the official set's
+                // Lumina.Excel.dll is byte-identical to the preview one and WKSMissionUnit.MissionToDo is present,
+                // so the named-collection reading stands.
+                // porting-note(api13): this DLL set's Lumina identified WKSMissionUnit, so the
+                // magic Unknown7 index is now the named MissionToDo collection. Scan all of its
+                // entries rather than reintroducing a hard-coded index -- that is what the
+                // question ("does this mission involve Material Miracle?") actually asks.
+                return missionUnit.MissionToDo.Any(todo => todo.ValueNullable is { } missionToDo
+                    && missionToDo.Unknown0 == (uint)Skills.MaterialMiracle);
             }
             catch (Exception e)
             {

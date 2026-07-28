@@ -8,10 +8,11 @@ using Artisan.IPC;
 using Artisan.Autocraft;
 using Artisan.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
-using ImGuiNET;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Gui.ContextMenu;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using System.Collections.Generic;
+using OtterGui.Extensions;
 
 namespace Artisan.ContextMenus;
 
@@ -247,7 +248,7 @@ internal static class CraftingListContextMenu
 
     private static unsafe IntPtr AgentById(AgentId id)
     {
-        var uiModule = (UIModule*)Svc.GameGui.GetUIModule();
+        var uiModule = (UIModule*)Svc.GameGui.GetUIModule().Address;
         var agents = uiModule->GetAgentModule();
         var agent = agents->GetAgentByInternalId(id);
         return (IntPtr)agent;

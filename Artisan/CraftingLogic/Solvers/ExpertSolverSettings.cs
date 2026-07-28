@@ -5,7 +5,7 @@ using Dalamud.Interface.Components;
 using Dalamud.Interface.Textures.TextureWraps;
 using ECommons.DalamudServices;
 using ECommons.ImGuiMethods;
-using ImGuiNET;
+using Dalamud.Bindings.ImGui;
 using System;
 using static Artisan.RawInformation.AddonExtensions;
 
@@ -62,7 +62,7 @@ public class ExpertSolverSettings
         {
             ImGui.TextWrapped($"This solver only applies to recipes with the");
             ImGui.SameLine();
-            ImGui.Image(expertIcon.ImGuiHandle, expertIcon.Size, new(0, 0), new(1, 1), new(0.94f, 0.57f, 0f, 1f));
+            ImGui.Image(expertIcon.Handle, expertIcon.Size, new System.Numerics.Vector2(0, 0), new System.Numerics.Vector2(1, 1), new System.Numerics.Vector4(0.94f, 0.57f, 0f, 1f));
             ImGui.SameLine();
             ImGui.TextWrapped($"icon in the crafting log.");
         }
