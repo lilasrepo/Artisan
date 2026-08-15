@@ -543,7 +543,16 @@ namespace Artisan.CraftingLogic.Solvers
             {
                 Svc.Log.Info($"Loaded existing Raphael cache from file ({v6cache.Keys.Count} entries)");
                 CurrentCache = v6cache;
-                P.PluginUi.RaphaelCacheUI.Table = null;
+                // TODO(api13): Configuration.Load() runs at Artisan.cs:64, thirteen lines BEFORE
+                // PluginUi is constructed (Artisan.cs:77), so P.PluginUi is still null here and this
+                // threw NullReferenceException -- caught by Configuration.Load()'s catch, which then
+                // silently fell back to a re-deserialised config and skipped ConvertConfig migration.
+                // Only reachable when a v6 cache file already exists AND Player.Available (the gate in
+                // LoadRaphaelCacheFromFile), i.e. on an in-game plugin reload, not on a cold login --
+                // which is why it shows up while smoke-testing. The assignment is only a staleness
+                // hint; RaphaelCacheUI rebuilds Table lazily when it is null.
+                if (P.PluginUi is not null)
+                    P.PluginUi.RaphaelCacheUI.Table = null;
             }
             else if (!config.RaphaelSolverCacheV5.IsEmpty && !config.RaphaelV5Converted)
             {

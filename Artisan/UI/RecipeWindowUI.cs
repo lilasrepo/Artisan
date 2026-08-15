@@ -384,10 +384,16 @@ namespace Artisan
                         return;
 
                     var atkUnitBase = (AtkUnitBase*)timerWindow.Address;
-                    var node = atkUnitBase->GetNodeById(27);
+                    // TODO(api13): upstream anchors on GetNodeById(27) and HIDES it
+                    // (node->ToggleVisibility(false)) so its buttons can take that node's place. Node
+                    // ids differ on TC game 7.20 -- 27 is the supply window's background panel here, so
+                    // hiding it every frame made the whole GrandCompanySupplyList render without its
+                    // frame (looked "semi-transparent", reported 2026-08-15). Reverted to TC_ok's
+                    // known-good anchor: NodeList[19], read-only, never mutates a game node.
+                    var node = atkUnitBase->UldManager.NodeList[19];
 
-                    if (node->IsVisible())
-                        node->ToggleVisibility(false);
+                    if (!node->IsVisible())
+                        return;
 
                     var position = AtkResNodeFunctions.GetNodePosition(node);
                     var scale = AtkResNodeFunctions.GetNodeScale(node);
@@ -395,7 +401,7 @@ namespace Artisan
                     var textSize = ImGui.CalcTextSize("Create Crafting List");
 
                     ImGuiHelpers.ForceNextWindowMainViewport();
-                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X, position.Y - 6f.Scale()));
+                    ImGuiHelpers.SetNextWindowPosRelativeMainViewport(new Vector2(position.X, position.Y + (textSize.Y * scale.Y) + (14f * scale.Y)));
 
                     ImGui.PushStyleColor(ImGuiCol.WindowBg, 0);
                     ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 0f);

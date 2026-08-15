@@ -1,0 +1,5 @@
+# Pinned 2026-08-15: TC-managed <Version>. Same reason as WrathCombo -- Artisan sits at
+# upstream HEAD with no version movement to ride, so the TC reserved-revision block
+# (4.0.5.1801) must survive refreshes or the publisher re-clobbers the same tag and
+# installed clients never get the TC-only fixes.
+Artisan/Artisan.csproj

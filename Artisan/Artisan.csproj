@@ -3,7 +3,13 @@
   <PropertyGroup>
     <Authors></Authors>
     <Company></Company>
-    <Version>4.0.5.18</Version>
+    <!-- TC reserved-revision block: <upstream revision> * 100 + <TC serial>.
+         Artisan is already at upstream HEAD (46bd1284) with no version movement to ride,
+         so today's TC-only fixes (GC-supply node, RaphaelCache NRE) need their own number
+         or installed clients are never offered them. A plain +1 (.19) would collide with
+         upstream's next release; .1801 encodes "upstream 18, TC fix 1". Re-base on the
+         next upstream bump: 4.0.5.19 -> 4.0.5.1901. -->
+    <Version>4.0.5.1801</Version>
     <Description>A 'simple' crafting plugin.</Description>
     <Copyright>Taurenkey</Copyright>
   </PropertyGroup>
