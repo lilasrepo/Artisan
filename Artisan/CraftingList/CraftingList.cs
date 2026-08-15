@@ -70,6 +70,16 @@ namespace Artisan.CraftingLists
         public int RepairPercent = 50;
 
         public bool AddAsQuickSynth;
+
+        public bool TidyAfter = true;
+
+        public bool OnlyRestockNonCrafted = false;
+
+        [NonSerialized]
+        public bool Locked = false;
+
+        [NonSerialized]
+        public bool IsPremade = false;
     }
 
     public class ListItem
@@ -105,10 +115,10 @@ namespace Artisan.CraftingLists
         public static void SetID(this NewCraftingList list)
         {
             var rng = new Random();
-            var proposedRNG = rng.Next(1, 50000);
+            var proposedRNG = rng.Next(100, 50000);
             while (P.Config.NewCraftingLists.Where(x => x.ID == proposedRNG).Any())
             {
-                proposedRNG = rng.Next(1, 50000);
+                proposedRNG = rng.Next(100, 50000);
             }
 
             list.ID = proposedRNG;
@@ -143,6 +153,7 @@ namespace Artisan.CraftingLists
             list.Repair = P.Config.DefaultListRepair;
             list.RepairPercent = P.Config.DefaultListRepairPercent;
             list.AddAsQuickSynth = P.Config.DefaultListQuickSynth;
+            list.TidyAfter = P.Config.DefaultAdjustQuantities;
 
             if (list.AddAsQuickSynth)
             {
@@ -156,8 +167,11 @@ namespace Artisan.CraftingLists
                 }
             }
 
-            P.Config.NewCraftingLists.Add(list);
-            P.Config.Save();
+            if (!list.IsPremade)
+            {
+                P.Config.NewCraftingLists.Add(list);
+                P.Config.Save();
+            }
             return true;
         }
 
@@ -316,7 +330,7 @@ namespace Artisan.CraftingLists
                 return;
             }
 
-            if (Svc.ClientState.LocalPlayer.ClassJob.RowId != recipe.CraftType.Value.RowId + 8)
+            if (Svc.Objects.LocalPlayer.ClassJob.RowId != recipe.CraftType.Value.RowId + 8)
             {
                 PreCrafting.equipGearsetLoops = 0;
                 PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), TimeSpan.FromMilliseconds(200)));
@@ -333,7 +347,7 @@ namespace Artisan.CraftingLists
                 return;
             }
 
-            if (Svc.ClientState.LocalPlayer.Level < recipe.RecipeLevelTable.Value.ClassJobLevel - 5 && Svc.ClientState.LocalPlayer.ClassJob.RowId == recipe.CraftType.Value.RowId + 8 && !isCrafting && !preparing)
+            if (Svc.Objects.LocalPlayer.Level < recipe.RecipeLevelTable.Value.ClassJobLevel - 5 && Svc.Objects.LocalPlayer.ClassJob.RowId == recipe.CraftType.Value.RowId + 8 && !isCrafting && !preparing)
             {
                 DuoLog.Error("Insufficient level to craft this item. Moving on.");
                 var currentRecipe = selectedList.ExpandedList[CurrentIndex];
@@ -365,7 +379,7 @@ namespace Artisan.CraftingLists
             {
                 selectedList.Recipes.First(x => x.ID == CraftingListUI.CurrentProcessedItem).ListItemOptions = new ListItemOptions();
             }
-            bool needConsumables = PreCrafting.NeedsConsumablesCheck(type, config);
+            bool needConsumables = PreCrafting.NeedsConsumablesCheck(type, config, recipe);
             bool hasConsumables = PreCrafting.HasConsumablesCheck(config);
 
             if (P.Config.AbortIfNoFoodPot && needConsumables && !hasConsumables)
@@ -375,20 +389,26 @@ namespace Artisan.CraftingLists
                 return;
             }
 
-            bool needFood = config != default && ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && !ConsumableChecker.IsFooded(config);
-            bool needPot = config != default && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && !ConsumableChecker.IsPotted(config);
-            bool needManual = config != default && ConsumableChecker.HasItem(config.RequiredManual, false) && !ConsumableChecker.IsManualled(config);
-            bool needSquadronManual = config != default && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) && !ConsumableChecker.IsSquadronManualled(config);
+            var skippingConsumables = ConsumableChecker.SkippingConsumablesByConfig(recipe);
 
-            if (needFood || needPot || needManual || needSquadronManual)
+            if (!skippingConsumables)
             {
-                if (!CLTM.IsBusy && !PreCrafting.Occupied())
+                bool needFood = type is PreCrafting.CraftType.Quick && !P.Config.UseConsumablesQuickSynth ? false : config != default && ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && !ConsumableChecker.IsFooded(config);
+                bool needPot = type is PreCrafting.CraftType.Quick && !P.Config.UseConsumablesQuickSynth ? false : config != default && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && !ConsumableChecker.IsPotted(config);
+                bool needManual = type is PreCrafting.CraftType.Quick && !P.Config.UseConsumablesQuickSynth ? false : config != default && ConsumableChecker.HasItem(config.RequiredManual, false) && !ConsumableChecker.IsManualled(config);
+                bool needSquadronManual = type is PreCrafting.CraftType.Quick && !P.Config.UseConsumablesQuickSynth ? false : config != default && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) && !ConsumableChecker.IsSquadronManualled(config);
+
+                if (needFood || needPot || needManual || needSquadronManual)
                 {
-                    CLTM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), TimeSpan.FromMilliseconds(200))));
-                    CLTM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskUseConsumables(config, type), TimeSpan.FromMilliseconds(200))));
-                    CLTM.DelayNext(100);
+                    if (!CLTM.IsBusy && !PreCrafting.Occupied())
+                    {
+                        if (needManual || needSquadronManual)
+                            CLTM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), TimeSpan.FromMilliseconds(200))));
+                        CLTM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskUseConsumables(config, type), TimeSpan.FromMilliseconds(200))));
+                        CLTM.DelayNext(100);
+                    }
+                    return;
                 }
-                return;
             }
 
             if (Crafting.CurState is Crafting.State.IdleBetween or Crafting.State.IdleNormal && !PreCrafting.Occupied())
@@ -481,8 +501,8 @@ namespace Artisan.CraftingLists
             if (TryGetAddonByName<AtkUnitBase>("WKSRecipeNotebook", out var cosmicAddon) &&
                 cosmicAddon->IsVisible)
             {
-                var hqBtn = cosmicAddon->UldManager.NodeList[17]->GetAsAtkComponentButton();
-                var nqBtn = cosmicAddon->UldManager.NodeList[18]->GetAsAtkComponentButton();
+                var hqBtn = cosmicAddon->GetNodeById(40)->GetAsAtkComponentButton();
+                var nqBtn = cosmicAddon->GetNodeById(39)->GetAsAtkComponentButton();
 
                 nqBtn->ClickAddonButton(cosmicAddon);
                 hqBtn->ClickAddonButton(cosmicAddon);

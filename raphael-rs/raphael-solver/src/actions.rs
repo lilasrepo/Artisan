@@ -1,0 +1,204 @@
+use strum::EnumCount;
+
+use raphael_sim::*;
+
+use crate::SolverSettings;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionCombo {
+    TricksOfTheTrade,   // Heart and Soul + Tricks of the Trade
+    IntensiveSynthesis, // Heart and Soul + Intensive Synthesis
+    PreciseTouch,       // Heart and Soul + Precise Touch
+    StandardTouch,      // Basic Touch + Standard Touch
+    AdvancedTouch,      // Basic Touch + Standard Touch + Advanced Touch
+    FocusedTouch,       // Observe + AdvancedTouch
+    RefinedTouch,       // Basic Touch + Refined Touch
+    None,               // No action
+    Single(Action),
+}
+
+impl ActionCombo {
+    pub const fn into_bits(self) -> u8 {
+        match self {
+            Self::Single(action) => action.into_bits(),
+            Self::TricksOfTheTrade => Action::COUNT as u8,
+            Self::IntensiveSynthesis => Action::COUNT as u8 + 1,
+            Self::PreciseTouch => Action::COUNT as u8 + 2,
+            Self::StandardTouch => Action::COUNT as u8 + 3,
+            Self::AdvancedTouch => Action::COUNT as u8 + 4,
+            Self::FocusedTouch => Action::COUNT as u8 + 5,
+            Self::RefinedTouch => Action::COUNT as u8 + 6,
+            Self::None => Action::COUNT as u8 + 7,
+        }
+    }
+
+    pub const fn from_bits(bits: u8) -> Self {
+        const N: u8 = Action::COUNT as u8;
+        if bits < N {
+            Self::Single(Action::from_bits(bits))
+        } else if bits == N {
+            Self::TricksOfTheTrade
+        } else if bits == N + 1 {
+            Self::IntensiveSynthesis
+        } else if bits == N + 2 {
+            Self::PreciseTouch
+        } else if bits == N + 3 {
+            Self::StandardTouch
+        } else if bits == N + 4 {
+            Self::AdvancedTouch
+        } else if bits == N + 5 {
+            Self::FocusedTouch
+        } else if bits == N + 6 {
+            Self::RefinedTouch
+        } else {
+            Self::None
+        }
+    }
+
+    pub const fn actions(self) -> &'static [Action] {
+        match self {
+            Self::TricksOfTheTrade => &[Action::HeartAndSoul, Action::TricksOfTheTrade],
+            Self::IntensiveSynthesis => &[Action::HeartAndSoul, Action::IntensiveSynthesis],
+            Self::PreciseTouch => &[Action::HeartAndSoul, Action::PreciseTouch],
+            Self::StandardTouch => &[Action::BasicTouch, Action::StandardTouch],
+            Self::AdvancedTouch => &[
+                Action::BasicTouch,
+                Action::StandardTouch,
+                Action::AdvancedTouch,
+            ],
+            Self::FocusedTouch => &[Action::Observe, Action::AdvancedTouch],
+            Self::RefinedTouch => &[Action::BasicTouch, Action::RefinedTouch],
+            Self::None => &[],
+            Self::Single(action) => match action {
+                Action::BasicSynthesis => &[Action::BasicSynthesis],
+                Action::BasicTouch => &[Action::BasicTouch],
+                Action::MasterMend => &[Action::MasterMend],
+                Action::Observe => &[Action::Observe],
+                Action::TricksOfTheTrade => &[Action::TricksOfTheTrade],
+                Action::WasteNot => &[Action::WasteNot],
+                Action::Veneration => &[Action::Veneration],
+                Action::StandardTouch => &[Action::StandardTouch],
+                Action::GreatStrides => &[Action::GreatStrides],
+                Action::Innovation => &[Action::Innovation],
+                Action::WasteNot2 => &[Action::WasteNot2],
+                Action::ByregotsBlessing => &[Action::ByregotsBlessing],
+                Action::PreciseTouch => &[Action::PreciseTouch],
+                Action::MuscleMemory => &[Action::MuscleMemory],
+                Action::CarefulSynthesis => &[Action::CarefulSynthesis],
+                Action::Manipulation => &[Action::Manipulation],
+                Action::PrudentTouch => &[Action::PrudentTouch],
+                Action::AdvancedTouch => &[Action::AdvancedTouch],
+                Action::Reflect => &[Action::Reflect],
+                Action::PreparatoryTouch => &[Action::PreparatoryTouch],
+                Action::Groundwork => &[Action::Groundwork],
+                Action::DelicateSynthesis => &[Action::DelicateSynthesis],
+                Action::IntensiveSynthesis => &[Action::IntensiveSynthesis],
+                Action::TrainedEye => &[Action::TrainedEye],
+                Action::HeartAndSoul => &[Action::HeartAndSoul],
+                Action::PrudentSynthesis => &[Action::PrudentSynthesis],
+                Action::TrainedFinesse => &[Action::TrainedFinesse],
+                Action::RefinedTouch => &[Action::RefinedTouch],
+                Action::QuickInnovation => &[Action::QuickInnovation],
+                Action::ImmaculateMend => &[Action::ImmaculateMend],
+                Action::TrainedPerfection => &[Action::TrainedPerfection],
+                Action::StellarSteadyHand => &[Action::StellarSteadyHand],
+                Action::RapidSynthesis => &[Action::RapidSynthesis],
+                Action::HastyTouch => &[Action::HastyTouch],
+                Action::DaringTouch => &[Action::DaringTouch],
+            },
+        }
+    }
+
+    pub const fn steps(self) -> u8 {
+        self.actions().len() as u8
+    }
+
+    pub fn duration(self) -> u8 {
+        self.actions().iter().map(|action| action.time_cost()).sum()
+    }
+}
+
+pub const FULL_SEARCH_ACTIONS: [ActionCombo; 36] = [
+    ActionCombo::AdvancedTouch,
+    ActionCombo::TricksOfTheTrade,
+    ActionCombo::IntensiveSynthesis,
+    ActionCombo::PreciseTouch,
+    ActionCombo::StandardTouch,
+    ActionCombo::FocusedTouch,
+    ActionCombo::RefinedTouch,
+    // progress
+    ActionCombo::Single(Action::BasicSynthesis),
+    ActionCombo::Single(Action::Veneration),
+    ActionCombo::Single(Action::MuscleMemory),
+    ActionCombo::Single(Action::CarefulSynthesis),
+    ActionCombo::Single(Action::Groundwork),
+    ActionCombo::Single(Action::PrudentSynthesis),
+    ActionCombo::Single(Action::RapidSynthesis),
+    // quality
+    ActionCombo::Single(Action::BasicTouch),
+    ActionCombo::Single(Action::StandardTouch),
+    ActionCombo::Single(Action::GreatStrides),
+    ActionCombo::Single(Action::Innovation),
+    ActionCombo::Single(Action::ByregotsBlessing),
+    ActionCombo::Single(Action::PrudentTouch),
+    ActionCombo::Single(Action::Reflect),
+    ActionCombo::Single(Action::PreparatoryTouch),
+    ActionCombo::Single(Action::AdvancedTouch),
+    ActionCombo::Single(Action::TrainedFinesse),
+    ActionCombo::Single(Action::TrainedEye),
+    ActionCombo::Single(Action::QuickInnovation),
+    ActionCombo::Single(Action::HastyTouch),
+    ActionCombo::Single(Action::DaringTouch),
+    // durability
+    ActionCombo::Single(Action::MasterMend),
+    ActionCombo::Single(Action::WasteNot),
+    ActionCombo::Single(Action::WasteNot2),
+    ActionCombo::Single(Action::Manipulation),
+    ActionCombo::Single(Action::ImmaculateMend),
+    ActionCombo::Single(Action::TrainedPerfection),
+    // misc
+    ActionCombo::Single(Action::DelicateSynthesis),
+    ActionCombo::Single(Action::StellarSteadyHand),
+];
+
+pub const PROGRESS_ONLY_SEARCH_ACTIONS: [ActionCombo; 16] = [
+    ActionCombo::IntensiveSynthesis,
+    ActionCombo::TricksOfTheTrade,
+    // progress
+    ActionCombo::Single(Action::BasicSynthesis),
+    ActionCombo::Single(Action::Veneration),
+    ActionCombo::Single(Action::MuscleMemory),
+    ActionCombo::Single(Action::CarefulSynthesis),
+    ActionCombo::Single(Action::Groundwork),
+    ActionCombo::Single(Action::PrudentSynthesis),
+    ActionCombo::Single(Action::RapidSynthesis),
+    // durability
+    ActionCombo::Single(Action::MasterMend),
+    ActionCombo::Single(Action::WasteNot),
+    ActionCombo::Single(Action::WasteNot2),
+    ActionCombo::Single(Action::Manipulation),
+    ActionCombo::Single(Action::ImmaculateMend),
+    ActionCombo::Single(Action::TrainedPerfection),
+    // misc
+    ActionCombo::Single(Action::StellarSteadyHand),
+];
+
+pub fn use_action_combo(
+    settings: &SolverSettings,
+    mut state: SimulationState,
+    action_combo: ActionCombo,
+) -> Result<SimulationState, ActionError> {
+    for action in action_combo.actions() {
+        state = state.use_action(*action, Condition::Normal, &settings.simulator_settings)?;
+    }
+    // All combos are already implemented as ActionCombo, so we reset the combo to None for cases
+    // where the full combo is not used, reducing state space.
+    if state.effects.combo() != Combo::SynthesisBegin {
+        state.effects.set_combo(Combo::None);
+    }
+    // Expedience enables Daring Touch, but Daring Touch can only be used if Stellar Steady Hand is active.
+    if state.effects.stellar_steady_hand() == 0 {
+        state.effects.set_expedience(false);
+    }
+    Ok(state)
+}

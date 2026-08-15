@@ -87,13 +87,19 @@ public unsafe struct RecipeNoteRecipeEntry
     }
 }
 
-[StructLayout(LayoutKind.Explicit, Size = 0x3B0)]
+[StructLayout(LayoutKind.Explicit, Size = 0x450)]
 public unsafe struct RecipeNoteRecipeData
 {
     public static RecipeNoteRecipeData* Ptr() => (RecipeNoteRecipeData*)RecipeNote.Instance()->RecipeList; // note: can be null
 
     [FieldOffset(0x000)] public RecipeNoteRecipeEntry* Recipes; // note: can be null
     [FieldOffset(0x008)] public int RecipesCount;
+    // TODO(api13): was 0x468 (an international-game-version-stale offset that made every recipe
+    // selection silently read the wrong index, so Endurance.RecipeID never got set and every window
+    // depending on it -- CraftMenuWindowUI included -- rendered empty). Corrected to 0x448 per
+    // TC_ok/_dalamud_api13's FFXIVClientStructs.dll, which is generated for this exact game version
+    // (RecipeNote.RecipeData.SelectedIndex, CS 6966) -- the authoritative source per CLAUDE.md §4-7-C
+    // rung 0. Runtime-confirmed dead via diagnostic log (RecipeID stuck at 0 for every selection).
     [FieldOffset(0x448)] public ushort SelectedIndex;
 
     public RecipeNoteRecipeEntry* FindRecipeById(uint id)

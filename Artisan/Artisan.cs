@@ -1,4 +1,5 @@
-﻿using Artisan.Autocraft;
+﻿global using Player = ECommons.GameHelpers.Player;
+using Artisan.Autocraft;
 using Artisan.ContextMenus;
 using Artisan.CraftingLists;
 using Artisan.CraftingLogic;
@@ -9,6 +10,7 @@ using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
 using Artisan.UI;
 using Artisan.Universalis;
+using AutoRetainerAPI;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Style;
@@ -39,14 +41,23 @@ public unsafe class Artisan : IDalamudPlugin
     internal TaskManager CTM;
     internal TextureCache Icons;
     internal UniversalisClient UniversalsisClient;
+    // TODO(api13): NativeCraftAll depends on KamiToolKit's NodeBase<T> : ICreatable<T> hierarchy,
+    // which does not compile against TC_ok/_dalamud_api13's FFXIVClientStructs (structural node-type
+    // mismatch across the whole library, not a single-signature issue). B1-disabled; see Artisan.csproj.
+    // internal NativeCraftAll? NCA;
+    internal PremadeLists PremadeLists;
+    internal AutoRetainerApi? AutoRetainerAPI;
+    internal AutoRetainerIPC? AutoRetainerIPC;
 
     internal StyleModel Style;
     internal bool StylePushed = false;
 
     public Artisan(IDalamudPluginInterface pluginInterface)
     {
-        ECommonsMain.Init(pluginInterface, this, Module.All);
+        ECommonsMain.Init(pluginInterface, this, Module.DalamudReflector);
         PunishLibMain.Init(pluginInterface, "Artisan", new AboutPlugin() { Sponsor = "https://ko-fi.com/taurenkey" });
+        // TODO(api13): see NCA field comment above.
+        // KamiToolKitLibrary.Initialize(pluginInterface);
         P = this;
 
         LuminaSheets.Init();
@@ -64,6 +75,9 @@ public unsafe class Artisan : IDalamudPlugin
         Icons = new(Svc.Data, Svc.Texture);
         Config = P.Config;
         PluginUi = new();
+        PremadeLists = new();
+        AutoRetainerAPI = new();
+        AutoRetainerIPC = new();
 
         Svc.Commands.AddHandler(commandName, new CommandInfo(OnCommand)
         {
@@ -106,19 +120,22 @@ public unsafe class Artisan : IDalamudPlugin
         ws.AddWindow(cw);
 
         Svc.Framework.Update += OnFrameworkUpdate;
-        Svc.ClientState.Logout += DisableEndurance;
-        Svc.ClientState.Login += DisableEndurance;
+        Svc.ClientState.Logout += OnLogout;
+        Svc.ClientState.Login += OnLogin;
         Svc.Condition.ConditionChange += Condition_ConditionChange;
 
         PluginUi.OpenWindow = OpenWindow.Main;
-
+        // TODO(api13): see NCA field comment above.
+        // Svc.Framework.RunOnFrameworkThread(() => NCA = new());
         ConvertCraftingLists();
     }
 
-    private void DisableEndurance(int type, int code)
+    private void OnLogout(int type, int code)
     {
         Endurance.ToggleEndurance(false);
         CraftingListUI.Processing = false;
+        RaphaelCache.CurrentCache = [];
+        P.PluginUi.RaphaelCacheUI.Table = null;
     }
 
     private void ConvertCraftingLists()
@@ -182,9 +199,11 @@ public unsafe class Artisan : IDalamudPlugin
         }
     }
 
-    private void DisableEndurance()
+    private void OnLogin()
     {
-        DisableEndurance(0, 0);
+        OnLogout(0, 0);
+        P.TM.Enqueue(() => Player.Available);
+        P.TM.Enqueue(() => RaphaelCache.LoadRaphaelCache(P.Config, false));
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -198,7 +217,7 @@ public unsafe class Artisan : IDalamudPlugin
 
         CharacterInfo.UpdateCharaStats();
         Crafting.Update();
-        SimpleTweaks.DisableImprovedLogTweak();
+        //SimpleTweaks.DisableImprovedLogTweak();
         PreCrafting.Update();
         Endurance.Update();
 
@@ -218,7 +237,7 @@ public unsafe class Artisan : IDalamudPlugin
         }
 
         var raphFinishedTasks = RaphaelCache.Tasks
-            .Where(x => x.Value.Item2.IsCompleted || x.Value.Item2.IsFaulted || x.Value.Item2.IsCanceled)
+            .Where(x => x.Value.Task.IsCompleted || x.Value.Task.IsFaulted || x.Value.Task.IsCanceled)
             .ToList();
 
         foreach (var key in raphFinishedTasks)
@@ -240,6 +259,9 @@ public unsafe class Artisan : IDalamudPlugin
         ws?.RemoveAllWindows();
         ws = null!;
 
+        AutoRetainerIPC?.Dispose();
+        AutoRetainerAPI?.Dispose();
+
         //Config.ScriptSolverConfig?.Dispose();
         EnduranceCraftWatcher.Dispose();
         PreCrafting.Dispose();
@@ -248,20 +270,21 @@ public unsafe class Artisan : IDalamudPlugin
 
         LuminaSheets.Dispose();
 
-        if (!DalamudInfo.IsOnStaging())
-        {
-            CraftingListContextMenu.Dispose();
-            UniversalsisClient.Dispose();
+        CraftingListContextMenu.Dispose();
+        UniversalsisClient.Dispose();
 
-            Svc.Condition.ConditionChange -= Condition_ConditionChange;
-            Svc.Framework.Update -= OnFrameworkUpdate;
-            Svc.ClientState.Logout -= DisableEndurance;
-            Svc.ClientState.Login -= DisableEndurance;
-            Endurance.Dispose();
-            RetainerInfo.Dispose();
-            IPC.IPC.Dispose();
-        }
+        Svc.Condition.ConditionChange -= Condition_ConditionChange;
+        Svc.Framework.Update -= OnFrameworkUpdate;
+        Svc.ClientState.Logout -= OnLogout;
+        Svc.ClientState.Login -= OnLogin;
+        Endurance.Dispose();
+        RetainerInfo.Dispose();
+        IPC.IPC.Dispose();
+
         ECommonsMain.Dispose();
+        // TODO(api13): see NCA field comment above.
+        // NCA?.Dispose();
+        // KamiToolKitLibrary.Dispose();
         P = null!;
     }
 
@@ -291,7 +314,7 @@ public unsafe class Artisan : IDalamudPlugin
                 {
                     if (int.TryParse(subcommands[1], out int id))
                     {
-                        if (P.Config.NewCraftingLists.Any(x => x.ID == id))
+                        if (P.Config.NewCraftingLists.TryGetFirst(x => x.ID == id, out var list))
                         {
                             if (subcommands.Length >= 3 && subcommands[2].ToLower() == "start")
                             {
@@ -304,7 +327,7 @@ public unsafe class Artisan : IDalamudPlugin
                             }
                             else
                             {
-                                ListEditor editor = new(id);
+                                ListEditor editor = new(list);
                                 return;
                             }
                         }
@@ -411,7 +434,7 @@ public unsafe class Artisan : IDalamudPlugin
             "builder" => OpenWindow.SpecialList,
             "workshop" => OpenWindow.FCWorkshop,
             "sim" => OpenWindow.Simulator,
-            _ => OpenWindow.Overview
+            _ => PluginUi.OpenWindow
         };
     }
 

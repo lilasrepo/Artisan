@@ -1,6 +1,9 @@
 ﻿using Artisan.RawInformation.Character;
 using ECommons;
 using ECommons.DalamudServices;
+using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.UI.Misc;
+using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
@@ -67,7 +70,7 @@ namespace Artisan.RawInformation
                 .ToDictionary(x => x.RowId, x => x);
 
             // Preprocess the recipe data into a lookup table (ILookup) for faster access.
-            recipeLookup = LuminaSheets.RecipeSheet.Values
+            recipeLookup = RecipeSheet.Values
                 .ToLookup(x => x.ItemResult.Value.Name.ToDalamudString().ToString());
 
             GatheringItemSheet = Svc.Data?.GetExcelSheet<GatheringItem>()?
@@ -225,17 +228,17 @@ namespace Artisan.RawInformation
 
         }
 
-        public static bool MissionHasMaterialMiracle(this Recipe recipe)
+        public static bool MissionHasExtraAction(this Recipe recipe, out uint action)
         {
+            action = 0;
             try
             {
-
                 Svc.Data.GameData.Options.PanicOnSheetChecksumMismatch = false;
                 var id = recipe.RowId;
                 //First, find the MissionRecipe with our recipe
                 var missionRec = Svc.Data.GetExcelSheet<WKSMissionRecipe>().FirstOrDefault(missionRec => missionRec.Recipe.Any(recipe => recipe.RowId == id));
                 //Bail if there's no MissionRecipe (this isn't a Cosmic Craft)
-                if(missionRec.RowId == 0)
+                if (missionRec.RowId == 0)
                     return false;
 
                 //Next, find the MissionUnit that has our MissionRecipe row
@@ -248,14 +251,46 @@ namespace Artisan.RawInformation
                 // porting-note(api13): this DLL set's Lumina identified WKSMissionUnit, so the
                 // magic Unknown7 index is now the named MissionToDo collection. Scan all of its
                 // entries rather than reintroducing a hard-coded index -- that is what the
-                // question ("does this mission involve Material Miracle?") actually asks.
-                return missionUnit.MissionToDo.Any(todo => todo.ValueNullable is { } missionToDo
-                    && missionToDo.Unknown0 == (uint)Skills.MaterialMiracle);
+                // question ("does this mission involve an extra action?") actually asks.
+                foreach (var todo in missionUnit.MissionToDo)
+                {
+                    if (todo.ValueNullable is { } missionToDo && (missionToDo.Unknown0 == (uint)Skills.MaterialMiracle || missionToDo.Unknown0 == (uint)Skills.SteadyHand))
+                    {
+                        action = missionToDo.Unknown0;
+                        return true;
+                    }
+                }
+
+                return false;
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 Svc.Log.Error($"Error in MissionHasMaterialMiracle: {e}");
                 return false;
+            }
+        }
+
+        // TODO(api13): official Lumina generates MirageStoreSetItem with fixed named fields
+        // (MainHand..Ring), not the ExcelPage/RowOffset-backed raw-offset shape upstream reads here.
+        // Rewritten to enumerate the named fields directly instead of the ExcelPage/RowOffset API.
+        extension(MirageStoreSetItem row)
+        {
+            public IEnumerable<RowRef<Item>> Items
+            {
+                get
+                {
+                    yield return row.MainHand;
+                    yield return row.OffHand;
+                    yield return row.Head;
+                    yield return row.Body;
+                    yield return row.Hands;
+                    yield return row.Legs;
+                    yield return row.Feet;
+                    yield return row.Earrings;
+                    yield return row.Necklace;
+                    yield return row.Bracelets;
+                    yield return row.Ring;
+                }
             }
         }
     }

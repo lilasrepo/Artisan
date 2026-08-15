@@ -419,7 +419,7 @@ namespace Artisan.UI.Tables
                     using var smallBtnStyle = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(ImGui.GetStyle().FramePadding.X, 0));
                     if (ImGui.Button($"Fetch Prices"))
                     {
-                        P.UniversalsisClient.PlayerWorld = Svc.ClientState.LocalPlayer?.CurrentWorld.RowId;
+                        P.UniversalsisClient.PlayerWorld = Svc.Objects.LocalPlayer?.CurrentWorld.RowId;
                         if (P.Config.LimitUnversalisToDC)
                             Task.Run(() => P.UniversalsisClient.GetDCData(item.Data.RowId, ref item.MarketboardData));
                         else
@@ -768,7 +768,7 @@ namespace Artisan.UI.Tables
                         var idx = 0;
                         FilteredItems.Add((item, idx));
                         idx++;
-                        foreach (var ingredient in CraftingListHelpers.GetIngredientRecipe(item.Data.RowId).Value.Ingredients().Where(x => x.Amount > 0))
+                        foreach (var ingredient in CraftingListHelpers.GetIngredientRecipe(item.Data.RowId)!.Value.Ingredients().Where(x => x.Amount > 0))
                         {
                             if (Items.TryGetFirst(x => x.Data.RowId == ingredient.Item.RowId, out var result))
                                 FilteredItems.Add((result, idx));

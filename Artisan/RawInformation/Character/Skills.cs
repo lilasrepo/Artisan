@@ -52,6 +52,7 @@ namespace Artisan.RawInformation.Character
         TrainedPerfection = 100475, // Reduces next action durability loss to 0, 0 cp, once per craft
 
         MaterialMiracle = 41269, // Cosmic exploration, lasts 45s (ugh), converts normal crafting conditions into expert crafting conditions, only 1 version of this action
+        SteadyHand = 46843, // Cosmic exploration, next 3 actions 100% success rate
     }
 
     public static class SkillActionMap
@@ -62,13 +63,19 @@ namespace Artisan.RawInformation.Character
         public static Skills ActionToSkill(uint actionId) => _actionToSkill.GetValueOrDefault(actionId);
 
         public static int Level(this Skills skill) => skill.ActionId(Job.CRP) >= 100000 ? LuminaSheets.CraftActions[skill.ActionId(Job.CRP)].ClassJobLevel : LuminaSheets.ActionSheet[skill.ActionId(Job.CRP)].ClassJobLevel;
-        public static uint ActionId(this Skills skill, Job job) => skill is Skills.MaterialMiracle ? (uint)Skills.MaterialMiracle : job is >= Job.CRP and <= Job.CUL ? _skillToAction[Math.Max(Array.IndexOf(Enum.GetValues(typeof(Skills)), skill), (int)Skills.None), job - Job.CRP] : 0;
+        public static uint ActionId(this Skills skill, Job job) => skill is Skills.MaterialMiracle ? (uint)Skills.MaterialMiracle : skill is Skills.SteadyHand ? (uint)Skills.SteadyHand : job is >= Job.CRP and <= Job.CUL ? _skillToAction[Math.Max(Array.IndexOf(Enum.GetValues(typeof(Skills)), skill), (int)Skills.None), job - Job.CRP] : 0;
 
         static SkillActionMap()
         {
             foreach (Skills skill in (Skills[])Enum.GetValues(typeof(Skills)))
             {
-                if (skill is Skills.None or Skills.TouchCombo or Skills.TouchComboRefined) continue;
+                // TODO(api13): MaterialMiracle/SteadyHand are Cosmic Exploration actions from an
+                // international patch newer than TC's game data; TC_ok/_dalamud_api13's ActionSheet
+                // doesn't have action id 46843 (SteadyHand), which threw KeyNotFoundException here and
+                // crashed the plugin's ctor on every load. ActionId() already special-cases both skills
+                // to bypass this lookup table entirely, so skipping them here is safe -- their table
+                // entries were never read anyway.
+                if (skill is Skills.None or Skills.TouchCombo or Skills.TouchComboRefined or Skills.MaterialMiracle or Skills.SteadyHand) continue;
                 AssignActionIDs(skill);
             }
         }

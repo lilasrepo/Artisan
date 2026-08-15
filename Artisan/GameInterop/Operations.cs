@@ -21,7 +21,7 @@ public static unsafe class Operations
         {
             if (Throttler.Throttle(500))
             {
-                if (GenericHelpers.TryGetAddonByName<AtkUnitBase>("RecipeNotePraticeSetting", out var recipenote))
+                if (TryGetAddonByName<AtkUnitBase>("RecipeNotePraticeSetting", out var recipenote))
                 {
                     Callback.Fire(recipenote, true, 0, 0, false);
                 }
@@ -44,7 +44,7 @@ public static unsafe class Operations
             if (recipeWindow == nint.Zero)
                 return;
 
-            GenericHelpers.TryGetAddonByName<AddonRecipeNote>("RecipeNote", out var addon);
+            TryGetAddonByName<AddonRecipeNote>("RecipeNote", out var addon);
 
             if (addon->SelectedRecipeQuantityCraftableFromMaterialsInInventory == null || !int.TryParse(addon->SelectedRecipeQuantityCraftableFromMaterialsInInventory->NodeText.ToString(), out int trueNumberCraftable) || trueNumberCraftable == 0)
             {
@@ -62,7 +62,7 @@ public static unsafe class Operations
 
             if (quickSynthWindow != null)
             {
-                var values = stackalloc AtkValue[2];
+                var values = stackalloc AtkValue[3];
                 values[0] = new()
                 {
                     Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Int,
@@ -73,7 +73,12 @@ public static unsafe class Operations
                     Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
                     Byte = 1,
                 };
-                Callback.Fire(quickSynthWindow, true, values[0], values[1]);
+                values[2] = new()
+                {
+                    Type = FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool,
+                    Byte = 1
+                };
+                Callback.Fire(quickSynthWindow, true, values[0], values[1], values[2]);
             }
 
         }

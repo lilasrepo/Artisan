@@ -235,11 +235,14 @@ public unsafe struct CharacterStats
             return GetBaseStatsEquipped();
         foreach (ref var gs in RaptureGearsetModule.Instance()->Entries)
         {
+            if (!gs.Flags.HasFlag(RaptureGearsetModule.GearsetFlag.Exists))
+                continue;
+
             try
             {
                 if ((Job)gs.ClassJob == job)
                     return GetBaseStatsGearset(ref gs);
-            }
+                }
             catch (Exception ex) 
             {
                 ex.Log();
@@ -253,10 +256,11 @@ public unsafe struct CharacterStats
         Craftsmanship += item.Stats[(int)CharacterStatsUtils.Stat.Craftsmanship].Effective;
         Control += item.Stats[(int)CharacterStatsUtils.Stat.Control].Effective;
         CP += item.Stats[(int)CharacterStatsUtils.Stat.CP].Effective;
-        SplendorCosmic |= slot == 0 && item.Data.Value.LevelEquip is 90 or 100 && item.Data.Value.Rarity >= 4;
+        SplendorCosmic |= slot == 0 && item.Data!.Value.LevelEquip is 90 or 100 && item.Data.Value.Rarity >= 4;
         Specialist |= slot == 13; // specialist == job crystal equipped
     }
 
+    // TODO(api13): IStatus is API15-only; TC_ok/_dalamud_api13's StatusList still yields Status.
     public void AddConsumables(ConsumableStats food, ConsumableStats pot, Dalamud.Game.ClientState.Statuses.Status? fcCraftBuff)
     {
         Craftsmanship += food.EffectiveValue(CharacterStatsUtils.Stat.Craftsmanship, Craftsmanship) + pot.EffectiveValue(CharacterStatsUtils.Stat.Craftsmanship, Craftsmanship) + (fcCraftBuff != null ? fcCraftBuff.Param : 0);

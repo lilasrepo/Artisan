@@ -1,0 +1,520 @@
+use egui::{
+    Align, Id, Layout, Widget,
+    util::cache::{ComputerMut, FrameCache},
+};
+use egui_extras::Column;
+use raphael_data::{
+    Consumable, Locale, RLVLS, Recipe, find_recipes, find_stellar_missions, get_game_settings,
+    get_job_name,
+};
+use raphael_translations::{t, t_format};
+
+use crate::{
+    config::{CrafterConfig, QualitySource, RecipeConfiguration, RecipeSource},
+    context::{AppContext, SolverConfig},
+    widgets::{
+        DropDown, GameDataNameLabel, NameSource,
+        util::{TableColumnWidth, calculate_column_widths},
+    },
+};
+
+use super::util;
+
+#[derive(Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+enum SearchDomain {
+    #[default]
+    Recipes,
+    StellarMissions,
+}
+
+impl SearchDomain {
+    fn display(self, locale: Locale) -> &'static str {
+        match self {
+            Self::Recipes => t!(locale, "Recipes"),
+            Self::StellarMissions => t!(locale, "Missions"),
+        }
+    }
+}
+
+#[derive(Default)]
+struct RecipeFinder {}
+
+impl ComputerMut<(&str, Locale), Vec<raphael_data::RecipeSearchEntry>> for RecipeFinder {
+    fn compute(&mut self, (text, locale): (&str, Locale)) -> Vec<raphael_data::RecipeSearchEntry> {
+        find_recipes(text, locale).collect::<Vec<_>>()
+    }
+}
+
+type RecipeSearchCache<'a> = FrameCache<Vec<raphael_data::RecipeSearchEntry>, RecipeFinder>;
+
+#[derive(Default)]
+struct StellarMissionFinder {}
+
+impl ComputerMut<(&str, Locale), Vec<raphael_data::StellarMissionSearchEntry>>
+    for StellarMissionFinder
+{
+    fn compute(
+        &mut self,
+        (text, locale): (&str, Locale),
+    ) -> Vec<raphael_data::StellarMissionSearchEntry> {
+        find_stellar_missions(text, locale).collect::<Vec<_>>()
+    }
+}
+
+type StellarMissionSearchCache<'a> =
+    FrameCache<Vec<raphael_data::StellarMissionSearchEntry>, StellarMissionFinder>;
+
+pub struct RecipeSelect<'a> {
+    crafter_config: &'a mut CrafterConfig,
+    recipe_config: &'a mut RecipeConfiguration,
+    solver_config: &'a mut SolverConfig,
+    selected_food: Option<Consumable>, // used for base prog/qual display
+    selected_potion: Option<Consumable>, // used for base prog/qual display
+    locale: Locale,
+}
+
+impl<'a> RecipeSelect<'a> {
+    pub fn new(app_context: &'a mut AppContext) -> Self {
+        let AppContext {
+            locale,
+            recipe_config,
+            selected_food,
+            selected_potion,
+            crafter_config,
+            solver_config,
+            ..
+        } = app_context;
+
+        Self {
+            crafter_config,
+            recipe_config,
+            solver_config,
+            selected_food: *selected_food,
+            selected_potion: *selected_potion,
+            locale: *locale,
+        }
+    }
+
+    fn select_normal_recipe(&mut self, recipe_id: u32, recipe: Recipe) {
+        self.crafter_config.selected_job = recipe.job_id;
+        let recipe_source = RecipeSource::Normal {
+            id: recipe_id,
+            data: recipe,
+        };
+        *self.recipe_config = RecipeConfiguration {
+            recipe_source,
+            quality_source: QualitySource::HqMaterialList([0; 6]),
+        };
+        self.solver_config.stellar_steady_hand_charges = 0;
+    }
+
+    fn draw_normal_recipe_select(&mut self, ui: &mut egui::Ui) {
+        let locale = self.locale;
+        let mut search_text = String::new();
+        let mut search_domain = SearchDomain::default();
+        ui.ctx().data_mut(|data| {
+            if let Some(text) = data.get_persisted::<String>(Id::new("RECIPE_SEARCH_TEXT")) {
+                search_text = text;
+            }
+            if let Some(domain) =
+                data.get_persisted::<SearchDomain>(Id::new("RECIPE_SEARCH_DOMAIN"))
+            {
+                search_domain = domain;
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.add(DropDown::new(
+                "RECIPE_SEARCH_DOMAIN",
+                &mut search_domain,
+                [SearchDomain::Recipes, SearchDomain::StellarMissions],
+                |search_domain: SearchDomain| search_domain.display(locale),
+            ));
+            if egui::TextEdit::singleline(&mut search_text)
+                .desired_width(f32::INFINITY)
+                .hint_text(t!(locale, "🔍 Search"))
+                .ui(ui)
+                .changed()
+            {
+                search_text = search_text.replace('\0', "");
+            }
+        });
+
+        ui.separator();
+
+        match search_domain {
+            SearchDomain::Recipes => {
+                let search_result = ui.ctx().memory_mut(|mem| {
+                    mem.caches
+                        .cache::<RecipeSearchCache<'_>>()
+                        .get((&search_text, locale))
+                        .clone()
+                });
+                self.draw_recipe_select_table(ui, search_result);
+            }
+            SearchDomain::StellarMissions => {
+                let search_result = ui.ctx().memory_mut(|mem| {
+                    mem.caches
+                        .cache::<StellarMissionSearchCache<'_>>()
+                        .get((&search_text, locale))
+                        .clone()
+                });
+                self.draw_mission_recipe_select(ui, search_result);
+            }
+        }
+
+        ui.ctx().data_mut(|data| {
+            data.insert_persisted(Id::new("RECIPE_SEARCH_TEXT"), search_text);
+            data.insert_persisted(Id::new("RECIPE_SEARCH_DOMAIN"), search_domain);
+        });
+    }
+
+    fn draw_recipe_select_table(
+        &mut self,
+        ui: &mut egui::Ui,
+        search_result: Vec<raphael_data::RecipeSearchEntry>,
+    ) {
+        let locale = self.locale;
+        let line_height = ui.spacing().interact_size.y;
+        let line_spacing = ui.spacing().item_spacing.y;
+        let table_height = 6.3 * line_height + 6.0 * line_spacing;
+
+        // Column::remainder().clip(true) is buggy when resizing the table
+        let column_widths = calculate_column_widths(
+            ui,
+            [
+                TableColumnWidth::SelectButton,
+                TableColumnWidth::JobName,
+                TableColumnWidth::Remaining,
+            ],
+            locale,
+        );
+
+        let table = egui_extras::TableBuilder::new(ui)
+            .id_salt("RECIPE_SELECT_TABLE")
+            .auto_shrink(false)
+            .striped(true)
+            .column(Column::exact(column_widths[0]))
+            .column(Column::exact(column_widths[1]))
+            .column(Column::exact(column_widths[2]))
+            .min_scrolled_height(table_height)
+            .max_scroll_height(table_height);
+        table.body(|body| {
+            body.rows(line_height, search_result.len(), |mut row| {
+                let (recipe_id, recipe) = search_result[row.index()];
+                row.col(|ui| {
+                    if ui.button(t!(locale, "Select")).clicked() {
+                        self.select_normal_recipe(recipe_id, *recipe);
+                    }
+                });
+                row.col(|ui| {
+                    ui.label(get_job_name(recipe.job_id, locale));
+                });
+                row.col(|ui| {
+                    ui.add(GameDataNameLabel::new(recipe, locale));
+                });
+            });
+        });
+    }
+
+    fn draw_mission_recipe_select(
+        &mut self,
+        ui: &mut egui::Ui,
+        search_result: Vec<raphael_data::StellarMissionSearchEntry>,
+    ) {
+        let locale = self.locale;
+        let line_height = ui.spacing().interact_size.y;
+        let line_spacing = ui.spacing().item_spacing.y;
+        let table_height = 6.3 * line_height + 6.0 * line_spacing;
+
+        let line_heights = search_result.iter().map(|(_mission_id, mission)| {
+            let recipe_count = mission.recipe_ids.len();
+            line_height * (1 + recipe_count) as f32 + line_spacing * recipe_count as f32
+        });
+
+        // See above note, 'Column::remainder().clip(true) is buggy [...]'
+        let column_widths = calculate_column_widths(
+            ui,
+            [TableColumnWidth::JobName, TableColumnWidth::Remaining],
+            locale,
+        );
+
+        let table = egui_extras::TableBuilder::new(ui)
+            .id_salt("MISSION_RECIPE_SELECT_TABLE")
+            .auto_shrink(false)
+            .striped(true)
+            .column(Column::exact(column_widths[0]))
+            .column(Column::exact(column_widths[1]))
+            .min_scrolled_height(table_height)
+            .max_scroll_height(table_height);
+        table.body(|body| {
+            body.heterogeneous_rows(line_heights, |mut row| {
+                let (mission_id, mission) = search_result[row.index()];
+                row.col(|ui| {
+                    ui.label(get_job_name(mission.job_id, locale));
+                });
+                let row_index = row.index();
+                row.col(|ui| {
+                    ui.add(GameDataNameLabel::new(
+                        NameSource::Mission { mission_id },
+                        locale,
+                    ));
+                    for (index, recipe_id) in mission.recipe_ids.iter().enumerate() {
+                        let recipe = &raphael_data::RECIPES[*recipe_id];
+                        const DARKENING_COLOR_DARK_MODE: egui::Color32 =
+                            egui::Color32::from_black_alpha(25);
+                        const DARKENING_COLOR_LIGHT_MODE: egui::Color32 =
+                            egui::Color32::from_black_alpha(3);
+                        let background_color = match (index % 2) == 0 {
+                            true => match (row_index % 2) == 0 {
+                                true => ui.style().visuals.faint_bg_color,
+                                false => match ui.visuals().dark_mode {
+                                    true => DARKENING_COLOR_DARK_MODE,
+                                    false => DARKENING_COLOR_LIGHT_MODE,
+                                },
+                            },
+                            false => egui::Color32::TRANSPARENT,
+                        };
+                        egui::Frame::new().fill(background_color).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                if ui.button(t!(locale, "Select")).clicked() {
+                                    self.select_normal_recipe(*recipe_id, *recipe);
+                                }
+                                ui.add(GameDataNameLabel::new(recipe, locale));
+                                ui.allocate_space(ui.available_size());
+                            });
+                        });
+                    }
+                });
+            });
+        });
+    }
+
+    fn draw_custom_recipe_select(self, ui: &mut egui::Ui) {
+        let locale = self.locale;
+        let default_game_settings = get_game_settings(
+            *self.recipe_config.recipe(),
+            None,
+            *self.crafter_config.active_stats(),
+            self.selected_food,
+            self.selected_potion,
+        );
+        let (recipe, custom_recipe_overrides) = match &mut self.recipe_config.recipe_source {
+            RecipeSource::Normal { .. } => unimplemented!(
+                "Custom recipe select should only be drawn for an actual custom recipe"
+            ),
+            RecipeSource::Custom { data, overrides } => (data, overrides),
+        };
+        let mut use_base_increase_overrides =
+            custom_recipe_overrides.base_progress_override.is_some();
+        ui.label(egui::RichText::new(t_format!(
+            locale,
+            "⚠ Patch {ffxiv_patch} recipes and items are already included. Only use custom recipes if you are an advanced user or if new recipes haven't been added yet.",
+            ffxiv_patch = "7.51"
+        )).small().color(ui.visuals().warn_fg_color));
+        ui.separator();
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                let mut recipe_job_level = RLVLS[recipe.recipe_level as usize].job_level;
+                ui.horizontal(|ui| {
+                    ui.label(t!(locale, "Level:"));
+                    ui.add_enabled_ui(use_base_increase_overrides, |ui| {
+                        ui.add(egui::DragValue::new(&mut recipe_job_level).range(1..=100));
+                        if use_base_increase_overrides {
+                            recipe.recipe_level =
+                                raphael_data::LEVEL_ADJUST_TABLE[recipe_job_level as usize];
+                        }
+                    });
+                });
+                ui.horizontal(|ui| {
+                    ui.add_enabled_ui(!use_base_increase_overrides, |ui| {
+                        ui.label(t!(locale, "Recipe Level:"));
+                        let mut rlvl_drag_value_widget =
+                            egui::DragValue::new(&mut recipe.recipe_level)
+                                .range(1..=RLVLS.len() - 1);
+                        if use_base_increase_overrides && recipe_job_level >= 50 {
+                            rlvl_drag_value_widget = rlvl_drag_value_widget.suffix("+");
+                        }
+                        ui.add(rlvl_drag_value_widget);
+                    });
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!(locale, "Progress:"));
+                    ui.add(egui::DragValue::new(
+                        &mut custom_recipe_overrides.max_progress_override,
+                    ));
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!(locale, "Quality:"));
+                    ui.add(egui::DragValue::new(
+                        &mut custom_recipe_overrides.max_quality_override,
+                    ));
+                });
+                if let QualitySource::Value(initial_quality) =
+                    &mut self.recipe_config.quality_source
+                {
+                    ui.horizontal(|ui| {
+                        ui.label(t!(locale, "Initial Quality:"));
+                        ui.add(egui::DragValue::new(initial_quality));
+                    });
+                }
+                ui.horizontal(|ui| {
+                    ui.label(t!(locale, "Durability:"));
+                    ui.add(
+                        egui::DragValue::new(&mut custom_recipe_overrides.max_durability_override)
+                            .range(10..=100),
+                    );
+                });
+                ui.checkbox(&mut recipe.is_expert, t!(locale, "Expert recipe"));
+            });
+            ui.separator();
+            ui.vertical(|ui| {
+                let mut rlvl = RLVLS[recipe.recipe_level as usize];
+                ui.add_enabled_ui(!use_base_increase_overrides, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(t!(locale, "Progress divider"));
+                        ui.add_enabled(false, egui::DragValue::new(&mut rlvl.progress_div));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(t!(locale, "Quality divider"));
+                        ui.add_enabled(false, egui::DragValue::new(&mut rlvl.quality_div));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(t!(locale, "Progress modifier"));
+                        ui.add_enabled(false, egui::DragValue::new(&mut rlvl.progress_mod));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(t!(locale, "Quality modifier"));
+                        ui.add_enabled(false, egui::DragValue::new(&mut rlvl.quality_mod));
+                    });
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label(t!(locale, "Progress per 100% efficiency:"));
+                    if !use_base_increase_overrides {
+                        ui.label(
+                            egui::RichText::new(default_game_settings.base_progress.to_string())
+                                .strong(),
+                        );
+                    } else {
+                        let mut base_progress_override_value =
+                            custom_recipe_overrides.base_progress_override.unwrap();
+                        ui.add(
+                            egui::DragValue::new(&mut base_progress_override_value).range(0..=9999),
+                        );
+                        custom_recipe_overrides.base_progress_override =
+                            Some(base_progress_override_value);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label(t!(locale, "Quality per 100% efficiency:"));
+                    if !use_base_increase_overrides {
+                        ui.label(
+                            egui::RichText::new(default_game_settings.base_quality.to_string())
+                                .strong(),
+                        );
+                    } else {
+                        let mut base_quality_override_value =
+                            custom_recipe_overrides.base_quality_override.unwrap();
+                        ui.add(
+                            egui::DragValue::new(&mut base_quality_override_value).range(0..=9999),
+                        );
+                        custom_recipe_overrides.base_quality_override =
+                            Some(base_quality_override_value);
+                    }
+                });
+                if ui
+                    .checkbox(
+                        &mut use_base_increase_overrides,
+                        t!(locale, "Override per 100% efficiency values"),
+                    )
+                    .changed()
+                {
+                    if use_base_increase_overrides {
+                        custom_recipe_overrides.base_progress_override =
+                            Some(default_game_settings.base_progress);
+                        custom_recipe_overrides.base_quality_override =
+                            Some(default_game_settings.base_quality);
+                    } else {
+                        custom_recipe_overrides.base_progress_override = None;
+                        custom_recipe_overrides.base_quality_override = None;
+                    }
+                }
+            });
+        });
+    }
+}
+
+impl Widget for RecipeSelect<'_> {
+    fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
+        let locale = self.locale;
+        let mut show_custom_recipe_select = false;
+        ui.ctx().data_mut(|data| {
+            if let RecipeSource::Custom { .. } = self.recipe_config.recipe_source
+                && let Some(selection) =
+                    data.get_persisted(Id::new("RECIPE_SEARCH_CUSTOM_SELECTED"))
+            {
+                show_custom_recipe_select = selection;
+            }
+        });
+
+        ui.group(|ui| {
+            ui.style_mut().spacing.item_spacing = egui::vec2(8.0, 3.0);
+            ui.vertical(|ui| {
+                let mut collapsed = false;
+
+                ui.horizontal(|ui| {
+                    util::collapse_persisted(
+                        ui,
+                        Id::new("RECIPE_SEARCH_COLLAPSED"),
+                        &mut collapsed,
+                    );
+                    ui.label(egui::RichText::new(t!(locale, "Recipe")).strong());
+                    ui.add(GameDataNameLabel::new(self.recipe_config.recipe(), locale));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui
+                            .checkbox(&mut show_custom_recipe_select, t!(locale, "Custom"))
+                            .changed()
+                            && show_custom_recipe_select
+                            && let RecipeSource::Normal { .. } = self.recipe_config.recipe_source
+                        {
+                            let default_game_settings = get_game_settings(
+                                *self.recipe_config.recipe(),
+                                None,
+                                *self.crafter_config.active_stats(),
+                                self.selected_food,
+                                self.selected_potion,
+                            );
+                            self.recipe_config.recipe_source =
+                                self.recipe_config.recipe_source.into_custom(
+                                    self.crafter_config.active_stats().level,
+                                    default_game_settings,
+                                );
+                            self.recipe_config.quality_source = QualitySource::Value(0);
+                        }
+                    });
+                });
+
+                if collapsed {
+                    return;
+                }
+
+                ui.separator();
+
+                if show_custom_recipe_select {
+                    self.draw_custom_recipe_select(ui);
+                } else {
+                    self.draw_normal_recipe_select(ui);
+                }
+
+                ui.ctx().data_mut(|data| {
+                    data.insert_persisted(
+                        Id::new("RECIPE_SEARCH_CUSTOM_SELECTED"),
+                        show_custom_recipe_select,
+                    );
+                });
+            });
+        })
+        .response
+    }
+}

@@ -1,0 +1,82 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net9.0-windows</TargetFramework>
+        <LangVersion>preview</LangVersion>
+        <PlatformTarget>x64</PlatformTarget>
+        <RootNamespace>OtterGui</RootNamespace>
+        <AssemblyName>OtterGui</AssemblyName>
+        <FileVersion>1.0.0.0</FileVersion>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <Product>OtterGui</Product>
+        <Copyright>Copyright © 2025</Copyright>
+        <Deterministic>true</Deterministic>
+        <OutputType>Library</OutputType>
+        <WarningLevel>4</WarningLevel>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Nullable>enable</Nullable>
+        <OutputPath>bin\$(Configuration)\</OutputPath>
+        <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+        <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <Platforms>AnyCPU;x64</Platforms>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+        <DebugType>full</DebugType>
+        <DefineConstants>DEBUG;TRACE;PROFILING</DefineConstants>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+        <DebugType>pdbonly</DebugType>
+        <DefineConstants>PROFILING</DefineConstants>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <DalamudLibPath>$(MSBuildThisFileDirectory)..\..\..\TC_ok\_dalamud_api13\</DalamudLibPath>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Compile Remove="OtterGuiInternal\bin\**" />
+      <Compile Remove="OtterGuiInternal\obj\**" />
+      <EmbeddedResource Remove="OtterGuiInternal\bin\**" />
+      <EmbeddedResource Remove="OtterGuiInternal\obj\**" />
+      <None Remove="OtterGuiInternal\bin\**" />
+      <None Remove="OtterGuiInternal\obj\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.2" />
+        <PackageReference Include="JetBrains.Annotations" Version="2024.3.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="Dalamud">
+            <HintPath>$(DalamudLibPath)Dalamud.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="Lumina">
+            <HintPath>$(DalamudLibPath)Lumina.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="Dalamud.Bindings.ImGui">
+            <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImGui.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="Dalamud.Bindings.ImPlot">
+            <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImPlot.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="ImGuiScene">
+            <HintPath>$(DalamudLibPath)ImGuiScene.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="Newtonsoft.Json">
+            <HintPath>$(DalamudLibPath)Newtonsoft.Json.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+        <Reference Include="Serilog">
+            <HintPath>$(DalamudLibPath)Serilog.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
+    </ItemGroup>
+</Project>

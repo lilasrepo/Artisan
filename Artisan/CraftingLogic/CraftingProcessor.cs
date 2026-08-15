@@ -8,6 +8,7 @@ using ECommons.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using static Artisan.CraftingLogic.Solvers.ExpertSolverProfiles;
 
 namespace Artisan.CraftingLogic;
 
@@ -41,7 +42,7 @@ public static class CraftingProcessor
         SolverDefinitions.Add(new ProgressOnlySolverDefinition());
         SolverDefinitions.Add(new ExpertSolverDefinition());
         SolverDefinitions.Add(new MacroSolverDefinition());
-        SolverDefinitions.Add(new ScriptSolverDefinition());
+        //SolverDefinitions.Add(new ScriptSolverDefinition());
         SolverDefinitions.Add(new RaphaelSolverDefintion());
 
         Crafting.CraftStarted += OnCraftStarted;
@@ -70,7 +71,6 @@ public static class CraftingProcessor
                     yield return f;
                 }
             }
-            yield return default;
         }
     }
 
@@ -87,15 +87,35 @@ public static class CraftingProcessor
 
     public static ISolverDefinition.Desc GetSolverForRecipe(RecipeConfig? recipeConfig, CraftState craft)
     {
-        var s = FindSolver(craft, recipeConfig?.SolverType ?? "", recipeConfig?.SolverFlavour ?? 0);
+        var s = FindSolver(craft, recipeConfig?.CurrentSolverType ?? "", recipeConfig?.CurrentSolverFlavour ?? 0);
         if (s != null)
             return s.Value;
 
         var s2 = GetAvailableSolversForRecipe(craft, false);
         if (s2.Count() > 0)
-            return s2.MaxBy(x => x.Priority);
+                return s2.MinBy(x => x.Priority);
 
         return default;
+    }
+
+    public static ExpertProfile GetExpertProfileForRecipe(RecipeConfig? recipeConfig)
+    {
+        var profileID = recipeConfig?.ExpertProfileID ?? 0;
+        foreach (var c in P.Config.ExpertSolverProfiles.GetExpertProfilesWithDefault().Where(c => c.ID == profileID))
+            return c;
+
+        return P.Config.ExpertSolverProfiles.GetDefaultProfile();
+    }
+
+    public static IEnumerable<ISolverDefinition.Desc> GetSolverDefinitions()
+    {
+        foreach (var solver in SolverDefinitions)
+        {
+            foreach (var f in solver.Flavours())
+            {
+                yield return f;
+            }
+        }
     }
 
     private static void OnCraftStarted(Lumina.Excel.Sheets.Recipe recipe, CraftState craft, StepState initialStep, bool trial)
@@ -120,13 +140,25 @@ public static class CraftingProcessor
         if (_activeSolver == null)
         {
             // if we didn't provide an explicit solver, create one - but make sure if we have manually assigned one, it is actually supported
-            var autoSolver = GetSolverForRecipe(P.Config.RecipeConfigs.GetValueOrDefault(recipe.RowId), craft);
+            var recipeConfig = P.Config.RecipeConfigs.GetValueOrDefault(recipe.RowId);
+            var autoSolver = GetSolverForRecipe(recipeConfig, craft);
             if (autoSolver.UnsupportedReason.Length > 0)
             {
                 SolverFailed?.Invoke(recipe, autoSolver.UnsupportedReason);
                 return;
             }
             _activeSolver = autoSolver.CreateSolver(craft);
+            if (_activeSolver is null)
+            {
+                SolverFailed?.Invoke(recipe, "No active solver selected.");
+                return;
+            }
+            if (_activeSolver.GetType().FullName.Contains("Expert"))
+            {
+                var expertProfile = P.Config.ExpertSolverProfiles.FindExpertProfile(recipeConfig.ExpertProfileID) ?? P.Config.ExpertSolverProfiles.GetDefaultProfile();
+                expertProfile.SetPerRecipeSettings(recipeConfig);
+                _activeSolver.SetActiveProfile(expertProfile);
+            }
             ActiveSolver = new(autoSolver.Name, _activeSolver);
         }
 
@@ -159,6 +191,11 @@ public static class CraftingProcessor
             return;
         if (_nextRec.Action != Skills.None && _nextRec.Action != step.PrevComboAction)
             Svc.Log.Warning($"Previous action was different from recommendation: recommended {_nextRec.Action}, used {step.PrevComboAction}");
+
+        if (P.Config.DebugTrackConditionData && craft.CraftExpert && step.PrevComboAction != Skills.FinalAppraisal && step.PrevComboAction != Skills.HeartAndSoul && step.PrevCondition != CraftData.Condition.Robust && step.PrevCondition != CraftData.Condition.GoodOmen)
+        {
+            P.Config.DebugTrackConditions.AddRecipeCondition(craft, step);
+        }
 
         _nextRec = _activeSolver.Solve(craft, step);
         Svc.Log.Debug($"Next rec is: {_nextRec.Action} on {_nextRec.Comment}");

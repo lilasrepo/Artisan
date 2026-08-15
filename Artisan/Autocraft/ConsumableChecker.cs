@@ -1,15 +1,17 @@
-﻿using Artisan.RawInformation;
+﻿using Artisan.CraftingLogic;
+using Artisan.GameInterop;
+using Artisan.RawInformation;
+using Artisan.RawInformation.Character;
 using ECommons.DalamudServices;
+using ECommons.ExcelServices;
+using ECommons.Logging;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ECommons.Logging;
-using Artisan.GameInterop;
-using FFXIVClientStructs.FFXIV.Client.Game;
-using Artisan.CraftingLogic;
-using Lumina.Excel.Sheets;
 
 namespace Artisan.Autocraft
 {
@@ -111,7 +113,7 @@ namespace Artisan.Autocraft
         {
             if (config == null || !config.FoodEnabled)
                 return true; // don't need a food
-            var foodBuff = Svc.ClientState.LocalPlayer.StatusList.FirstOrDefault(x => x.StatusId == 48 & x.RemainingTime > 10f);
+            var foodBuff = Svc.Objects.LocalPlayer.StatusList.FirstOrDefault(x => x.StatusId == 48 & x.RemainingTime > 10f);
             if (foodBuff == null)
                 return false; // don't have any well-fed buff
             var desiredFood = LuminaSheets.ItemSheet[config.RequiredFood].ItemAction.Value;
@@ -126,7 +128,7 @@ namespace Artisan.Autocraft
         {
             if (config == null || !config.PotionEnabled)
                 return true; // don't need a pot
-            var potBuff = Svc.ClientState.LocalPlayer.StatusList.FirstOrDefault(x => x.StatusId == 49 & x.RemainingTime > 10f);
+            var potBuff = Svc.Objects.LocalPlayer.StatusList.FirstOrDefault(x => x.StatusId == 49 & x.RemainingTime > 10f);
             if (potBuff == null)
                 return false; // don't have any well-fed buff
             var desiredPot = LuminaSheets.ItemSheet[config.RequiredPotion].ItemAction.Value;
@@ -141,7 +143,7 @@ namespace Artisan.Autocraft
         {
             if (config == null || !config.ManualEnabled)
                 return true; // don't need a manual
-            return Svc.ClientState.LocalPlayer?.StatusList.Any(x => x.StatusId == 45) == true;
+            return Svc.Objects.LocalPlayer?.StatusList.Any(x => x.StatusId == 45) == true;
         }
 
         internal static bool IsSquadronManualled(RecipeConfig? config)
@@ -150,7 +152,7 @@ namespace Artisan.Autocraft
                 return true; // don't need a squadron manual
             // Squadron engineering/spiritbonding/rationing/gear manual.
             uint[] SquadronManualBuffss = { 1082, 1083, 1084, 1085 };
-            return Svc.ClientState.LocalPlayer?.StatusList.Any(x => SquadronManualBuffss.Contains(x.StatusId)) == true;
+            return Svc.Objects.LocalPlayer?.StatusList.Any(x => SquadronManualBuffss.Contains(x.StatusId)) == true;
         }
 
         internal static bool UseItem(uint id, bool hq = false)
@@ -258,6 +260,23 @@ namespace Artisan.Autocraft
         {
             if (requiredItem == 0) return true;
             return InventoryManager.Instance()->GetInventoryItemCount(requiredItem, requiredItemHQ) > 0;
+        }
+
+        internal static int NumberOfConsumable(uint item, bool hq)
+        {
+            return InventoryManager.Instance()->GetInventoryItemCount(item, hq);
+        }
+
+        public static bool SkippingConsumablesByConfig(Recipe recipe)
+        {
+            var craftLevel = recipe.RecipeLevelTable.Value.ClassJobLevel;
+            var ourLevel = CharacterInfo.JobLevel((Job)(recipe.CraftType.Value.RowId + 8));
+            var diffAllowed = P.Config.ConsumableLevelGapDifference;
+            var diff = Math.Max(0, ourLevel - craftLevel);
+            if (diffAllowed < diff)
+                return true;
+            else
+                return false;
         }
     }
 }

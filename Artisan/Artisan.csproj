@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Authors></Authors>
     <Company></Company>
-    <Version>4.0.4.10</Version>
+    <Version>4.0.5.18</Version>
     <Description>A 'simple' crafting plugin.</Description>
     <Copyright>Taurenkey</Copyright>
   </PropertyGroup>
@@ -44,11 +44,16 @@
 		<OutputPath>$(DalamudDevPlugins)</OutputPath>
 		<NoWarn>CS1591</NoWarn>
 	</PropertyGroup>
-	
+
   <PropertyGroup>
     <DalamudLibPath>$(MSBuildThisFileDirectory)..\..\..\TC_ok\_dalamud_api13\</DalamudLibPath>
   </PropertyGroup>
-	
+
+  <ItemGroup>
+    <!-- TODO(api13): KamiToolKit wall, see ProjectReference comment below -->
+    <Compile Remove="UI\KTK\NativeCraftAll.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="..\.editorconfig" Link=".editorconfig" />
     <None Update="bcryptprimitives.dll">
@@ -66,6 +71,9 @@
     <None Update="Images\AutoMode.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+	<None Update="Images\CollectableThresholds.png">
+	  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	</None>
     <None Update="Images\EnduranceNewSetting.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -94,14 +102,18 @@
 
   <ItemGroup>
     <PackageReference Include="DalamudPackager" Version="13.1.0" />
-    <PackageReference Include="Discord.Net.Webhook" Version="3.15.3" />
+    <PackageReference Include="Discord.Net.Webhook" Version="3.20.1" />
     <ProjectReference Include="..\ECommons\ECommons\ECommons.csproj" />
     <PackageReference Include="FuzzySharp" Version="2.0.2" />
+    <PackageReference Include="LuminaSupplemental.Excel" Version="3.0.7" />
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.10.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="Reloaded.Memory" Version="9.4.2" />
+    <PackageReference Include="Reloaded.Memory" Version="9.4.3" />
     <PackageReference Include="SharpDX.Direct2D1" Version="4.2.0" />
+    <ProjectReference Include="..\AutoRetainerAPI\AutoRetainerAPI\AutoRetainerAPI.csproj" />
+    <!-- TODO(api13): KamiToolKit's NodeBase<T> : ICreatable<T> hierarchy doesn't compile against
+         TC_ok/_dalamud_api13's FFXIVClientStructs; NativeCraftAll.cs (the only consumer) is Compile-Removed below. -->
     <ProjectReference Include="..\OtterGui\OtterGui.csproj" />
     <ProjectReference Include="..\PunishLib\PunishLib\PunishLib.csproj" />
     <Reference Include="Newtonsoft.Json">

@@ -8,8 +8,6 @@ using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using ECommons.DalamudServices;
 using ECommons.Logging;
-using Lumina.Excel.Sheets;
-using Lumina.Excel.Sheets.Experimental;
 using System.Collections.Generic;
 using System.Linq;
 using Item = Lumina.Excel.Sheets.Item;
@@ -26,9 +24,12 @@ namespace Artisan.Autocraft
             Svc.Chat.ChatMessage += ScanForHQItems;
         }
 
+        // TODO(api13): upstream HEAD moved this to the API15-only IHandleableChatMessage delegate form;
+        // TC_ok/_dalamud_api13's Dalamud.dll has no Dalamud.Game.Chat namespace at all. Reverted to the
+        // classic Svc.Chat.ChatMessage delegate signature (proven at this pin) and kept the new logic.
         private static void ScanForHQItems(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
         {
-            if (type == (XivChatType)2242 && Svc.Condition[ConditionFlag.Crafting])
+            if (type == (XivChatType)2242 && Crafting.CurState == Crafting.State.WaitFinish)
             {
                 if (message.Payloads.Any(x => x.Type == PayloadType.Item))
                 {
@@ -40,7 +41,7 @@ namespace Artisan.Autocraft
                             if (Crafting.CurCraft is not null)
                             {
                                 var config = P.Config.RecipeConfigs.GetValueOrDefault(Crafting.CurCraft.Recipe.RowId) ?? new();
-                                if (config.SolverType.Contains("Progress"))
+                                if (config.CurrentSolverType.Contains("Progress"))
                                     return;
                             }
                             Endurance.ToggleEndurance(false);
@@ -100,7 +101,9 @@ namespace Artisan.Autocraft
                         Endurance.ToggleEndurance(false);
                         if (P.Config.PlaySoundFinishEndurance)
                             SoundPlayer.PlaySound();
-                        DuoLog.Information("Craft X has completed.");
+
+                        if (P.Config.ExitCraftStanceEndurance)
+                            PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), default));
 
                     }
                 }

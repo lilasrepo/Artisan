@@ -5,18 +5,16 @@ using Artisan.IPC;
 using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
 using Artisan.UI;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility.Raii;
 using ECommons;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
-using ECommons.GameHelpers;
 using ECommons.ImGuiMethods;
 using ECommons.Reflection;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using Dalamud.Bindings.ImGui;
 using Lumina.Excel.Sheets;
-using OtterGui;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -46,7 +44,7 @@ namespace Artisan.CraftingLists
         public static int CurrentProcessedItemIndex;
         public static int CurrentProcessedItemCount;
         public static int CurrentProcessedItemListCount;
-        private static readonly ListFolders ListsUI = new();
+        private static readonly ListFolders UserListsUI = new(P.Config.NewCraftingLists);
 
         private static bool GatherBuddy => DalamudReflector.TryGetDalamudPlugin("GatherBuddy", out var gb, false, true);
         private static bool ItemVendor => DalamudReflector.TryGetDalamudPlugin("Item Vendor Location", out var ivl, false, true);
@@ -55,22 +53,45 @@ namespace Artisan.CraftingLists
 
         internal static void Draw()
         {
-            ImGui.TextWrapped($"Crafting lists are a fantastic way to queue up different crafts and have them craft one-by-one. Create a list by importing from Teamcraft using the button at the bottom, or click the '+' icon and give your list a name." +
-                              $" You can also right click an item from the game's recipe menu to either add it to a new list if one is not selected, or to create a new list with it as the first item if a list is not selected.");
+            try
+            {
+                ImGui.TextWrapped($"Crafting lists are a fantastic way to queue up different crafts and have them craft one-by-one. Create a list by importing from Teamcraft using the button at the bottom, or click the '+' icon and give your list a name." +
+                                  $" You can also right click an item from the game's recipe menu to either add it to a new list if one is not selected, or to create a new list with it as the first item if a list is not selected.");
 
-            ImGui.Dummy(new Vector2(0, 14f));
-            ImGui.TextWrapped("Left click a list to open the editor. Right click a list to select it without opening the editor.");
+                ImGui.Dummy(new Vector2(0, 14f));
+                ImGui.TextWrapped("Left click a list to open the editor. Right click a list to select it without opening the editor.");
 
-            ImGui.Separator();
+                ImGui.Separator();
 
-            DrawListOptions();
-            ImGui.Spacing();
+                DrawListOptions();
+                ImGui.Spacing();
+            }
+            catch { }
         }
 
         private static void DrawListOptions()
         {
+
             ImGui.BeginChild("ListsSelector", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y - 200f));
-            ListsUI.Draw(ImGui.GetContentRegionAvail().X);
+
+            if (ImGui.BeginTabBar("##ListsTabBar"))
+            {
+                if (ImGui.BeginTabItem("User Lists"))
+                {
+                    UserListsUI.Draw(ImGui.GetContentRegionAvail().X);
+                    ImGui.EndTabItem();
+                }
+                if (ImGui.BeginTabItem("Premade Lists"))
+                {
+                    try
+                    {
+                        P.PremadeLists.PremadesUI.Draw(ImGui.GetContentRegionAvail().X);
+                    }
+                    catch { }
+                    ImGui.EndTabItem();
+                }
+            }
+
             ImGui.EndChild();
 
             ImGui.BeginChild("ListButtons", new Vector2(ImGui.GetContentRegionAvail().X, ImGui.GetContentRegionAvail().Y - 95f));
@@ -221,7 +242,7 @@ namespace Artisan.CraftingLists
 
                 return output;
             }
-            catch (Exception ex)
+            catch
             {
                 return output;
             }
@@ -230,7 +251,7 @@ namespace Artisan.CraftingLists
         public static TimeSpan GetCraftDuration(uint recipeId, bool qs)
         {
             if (qs)
-                return TimeSpan.FromSeconds(3);
+                return TimeSpan.FromSeconds(2);
 
             var recipe = LuminaSheets.RecipeSheet[recipeId];
             var config = P.Config.RecipeConfigs.GetValueOrDefault(recipe.RowId) ?? new();
@@ -272,11 +293,12 @@ namespace Artisan.CraftingLists
             }
         }
 
-        public static void AddAllSubcrafts(Recipe selectedRecipe, NewCraftingList selectedList, int amounts = 1, int loops = 1)
+        public static void AddAllSubcrafts(Recipe SelectedRecipe, NewCraftingList selectedList, int amounts = 1, int loops = 1)
         {
-            foreach (var subItem in selectedRecipe.Ingredients().Where(x => x.Amount > 0))
+            foreach (var subItem in SelectedRecipe!.Ingredients().Where(x => x.Amount > 0))
             {
-                var subRecipe = CraftingListHelpers.GetIngredientRecipe(subItem.Item.RowId);
+                var craftType = SelectedRecipe.CraftType;
+                var subRecipe = CraftingListHelpers.GetIngredientRecipe(subItem.Item.RowId, (int)craftType.RowId);
                 if (subRecipe != null)
                 {
                     AddAllSubcrafts(subRecipe.Value, selectedList, subItem.Amount * amounts, loops);
@@ -310,7 +332,7 @@ namespace Artisan.CraftingLists
                     for (int i = 1; i <= ing.Amount; i++)
                     {
                         ingredientList.Add((int)ing.Item.RowId);
-                        if (CraftingListHelpers.GetIngredientRecipe(ing.Item.RowId).Value.RowId != 0 && addSubList)
+                        if (CraftingListHelpers.GetIngredientRecipe(ing.Item.RowId)!.Value.RowId != 0 && addSubList)
                         {
                             AddRecipeIngredientsToList(CraftingListHelpers.GetIngredientRecipe(ing.Item.RowId), ref ingredientList);
                         }

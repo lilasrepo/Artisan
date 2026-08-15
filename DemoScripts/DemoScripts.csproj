@@ -11,6 +11,9 @@
     <DalamudLibPath>$(MSBuildThisFileDirectory)..\..\..\TC_ok\_dalamud_api13\</DalamudLibPath>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\ECommons\ECommons\ECommons.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Artisan\Artisan.csproj" />
