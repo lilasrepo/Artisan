@@ -402,8 +402,12 @@ namespace Artisan.CraftingLists
                 {
                     if (!CLTM.IsBusy && !PreCrafting.Occupied())
                     {
-                        if (needManual || needSquadronManual)
-                            CLTM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), TimeSpan.FromMilliseconds(200))));
+                        // porting-note: upstream narrowed this exit to manuals only, but on TC the game
+                        // refuses item use (GetActionStatus 579) while ConditionFlag.PreparingToCraft is
+                        // set, which is exactly the state a list is in between crafts. Occupied() does not
+                        // cover that flag, so TaskUseConsumables retried forever and the list stalled
+                        // silently. Keep the pre-upstream unconditional exit for every consumable.
+                        CLTM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), TimeSpan.FromMilliseconds(200))));
                         CLTM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskUseConsumables(config, type), TimeSpan.FromMilliseconds(200))));
                         CLTM.DelayNext(100);
                     }

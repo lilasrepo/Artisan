@@ -8,8 +8,9 @@
          so today's TC-only fixes (GC-supply node, RaphaelCache NRE) need their own number
          or installed clients are never offered them. A plain +1 (.19) would collide with
          upstream's next release; .1801 encodes "upstream 18, TC fix 1". Re-base on the
-         next upstream bump: 4.0.5.19 -> 4.0.5.1901. -->
-    <Version>4.0.5.1801</Version>
+         next upstream bump: 4.0.5.19 -> 4.0.5.1901.
+         .1802: pre-consumable TaskExitCraft restored (mid-list food re-eat stall). -->
+    <Version>4.0.5.1802</Version>
     <Description>A 'simple' crafting plugin.</Description>
     <Copyright>Taurenkey</Copyright>
   </PropertyGroup>

@@ -163,7 +163,9 @@ public unsafe static class PreCrafting
                 return;
             }
 
-            bool needExitCraft = Crafting.CurState == Crafting.State.IdleBetween && (needClassChange || needEquipItem || needsManuals);
+            // porting-note: needConsumables, not needsManuals — see CraftingList.ProcessList. On TC the
+            // game refuses item use while PreparingToCraft, so food/potion need the craft exited too.
+            bool needExitCraft = Crafting.CurState == Crafting.State.IdleBetween && (needClassChange || needEquipItem || needConsumables);
 
             // TODO: pre-setup solver for incoming craft
             Tasks.Clear();
