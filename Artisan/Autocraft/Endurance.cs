@@ -379,8 +379,13 @@ namespace Artisan.Autocraft
                     {
                         if (!P.TM.IsBusy && !PreCrafting.Occupied())
                         {
-                            if (needManual || needSquadronManual)
-                                P.TM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), TimeSpan.FromMilliseconds(200))));
+                            // porting-note: upstream only exits the craft stance for manuals, but on TC the
+                            // game refuses ANY item use while ConditionFlag.PreparingToCraft is set
+                            // (GetActionStatus 579) -- the exact state Endurance sits in between crafts. Without
+                            // the exit, TaskUseConsumables' CanUseAction stays false and it retries forever,
+                            // silently. Same fix as CraftingList.ProcessList (2026-08-16); this second copy of
+                            // the logic was missed then. TaskExitCraft is a no-op (Done) when already IdleNormal.
+                            P.TM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskExitCraft(), TimeSpan.FromMilliseconds(200))));
                             P.TM.Enqueue(() => PreCrafting.Tasks.Add((() => PreCrafting.TaskUseConsumables(config, type), TimeSpan.FromMilliseconds(200))));
                             P.TM.DelayNext(100);
                         }

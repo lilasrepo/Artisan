@@ -427,6 +427,18 @@ public unsafe static class PreCrafting
         return TaskResult.Retry;
     }
 
+    // porting-note: TaskUseConsumables' "can't use it yet" branches return Retry with no upper bound and
+    // no output, so a permanent refusal (TC's GetActionStatus 579 while PreparingToCraft) reads as a total
+    // freeze with an empty log. Throttled trace so the next occurrence is diagnosable instead of guessed.
+    private static uint _consumableBlockedRetries;
+
+    private static TaskResult ConsumableBlocked(string kind, uint itemId)
+    {
+        if (_consumableBlockedRetries++ % 100 == 0)
+            Svc.Log.Debug($"Can't use {kind} {itemId} yet (retry #{_consumableBlockedRetries}); PreparingToCraft={Svc.Condition[ConditionFlag.PreparingToCraft]}, Crafting={Svc.Condition[ConditionFlag.Crafting]}, Occupied={Occupied()}");
+        return TaskResult.Retry;
+    }
+
     public static TaskResult TaskUseConsumables(RecipeConfig? config, CraftType type)
     {
         if (ActionManagerEx.AnimationLock > 0)
@@ -451,7 +463,7 @@ public unsafe static class PreCrafting
             }
             else
             {
-                return TaskResult.Retry;
+                return ConsumableBlocked("squadron manual", config.RequiredSquadronManual);
             }
         }
 
@@ -465,7 +477,7 @@ public unsafe static class PreCrafting
             }
             else
             {
-                return TaskResult.Retry;
+                return ConsumableBlocked("manual", config.RequiredManual);
             }
         }
 
@@ -480,7 +492,7 @@ public unsafe static class PreCrafting
             }
             else
             {
-                return TaskResult.Retry;
+                return ConsumableBlocked("food", foodId);
             }
         }
 
@@ -495,10 +507,11 @@ public unsafe static class PreCrafting
             }
             else
             {
-                return TaskResult.Retry;
+                return ConsumableBlocked("pot", potId);
             }
         }
 
+        _consumableBlockedRetries = 0;
         return TaskResult.Done;
     }
 

@@ -10,7 +10,7 @@
          upstream's next release; .1801 encodes "upstream 18, TC fix 1". Re-base on the
          next upstream bump: 4.0.5.19 -> 4.0.5.1901.
          .1802: pre-consumable TaskExitCraft restored (mid-list food re-eat stall). -->
-    <Version>4.0.5.1803</Version>
+    <Version>4.0.5.1804</Version>
     <Description>A 'simple' crafting plugin.</Description>
     <Copyright>Taurenkey</Copyright>
   </PropertyGroup>
