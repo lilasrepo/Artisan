@@ -884,8 +884,11 @@ namespace Artisan.UI
                 changed |= ImGui.Checkbox($"Expanded Crafting Log search bar", ref P.Config.ReplaceSearch);
                 ImGuiComponents.HelpMarker($"Expands the search bar in the Crafting Log with instant results. Click on any result to open it in the Crafting Log.");
 
-                changed |= ImGui.Checkbox("Use Native Craft-X Buttons in Recipe Log", ref P.Config.UseNativeButtons);
-                ImGuiComponents.HelpMarker("This will change the Craft-X button interface to one using native game assets.");
+                // TODO(api13): native buttons need KamiToolKit; unavailable on TC. Shown disabled, not deleted,
+                // so the option reappears cleanly if KamiToolKit is ever ported.
+                using (ImRaii.Disabled())
+                    ImGui.Checkbox("Use Native Craft-X Buttons in Recipe Log", ref P.Config.UseNativeButtons);
+                ImGuiComponents.HelpMarker("Unavailable on the TC build (requires KamiToolKit, which does not build against api13). Artisan uses the ImGui Craft-X row instead.");
 
                 changed |= ImGui.Checkbox("Show leveling category completion in Crafting Log", ref P.Config.ShowLevelingRecipeProgress);
                 ImGuiComponents.HelpMarker("Shows a total of completed recipes in each leveling category, or a tick if all are completed.");

@@ -927,13 +927,23 @@ namespace Artisan
             {
                 //var node = addonPtr->UldManager.NodeList[1]->GetAsAtkComponentNode()->Component->UldManager.NodeList[4];
                 var node = addonPtr->GetNodeById(103);// UldManager.NodeList[8];
+                var textNode = addonPtr->GetTextNodeById(78);
+                if (node is null || textNode is null)
+                {
+                    // TODO(api13): these ids come from the international 7.5x RecipeNote uld. TC_ok's
+                    // known-good pre-native-button code used UldManager.NodeList[8] / NodeList[35]
+                    // (TC_ok/Artisan/Artisan/UI/RecipeWindowUI.cs:882,890). If this fires on TC 7.20,
+                    // switch to those. Upstream dereferenced both without a null check.
+                    Svc.Log.Debug("[Artisan/TC] RecipeNote craft-all anchor node missing (103/78)");
+                    return;
+                }
 
                 var position = AtkResNodeFunctions.GetNodePosition(node);
                 var scale = AtkResNodeFunctions.GetNodeScale(node);
                 var size = new Vector2(node->Width, node->Height) * scale;
                 //position += ImGuiHelpers.MainViewport.Pos;
                 ImGui.CalcTextSize("Craft X Times:");
-                var text = addonPtr->GetTextNodeById(78)->NodeText.ToString();
+                var text = textNode->NodeText.ToString();
                 var craftableCount = text == "" ? 0 : Convert.ToInt32(text.GetNumbers());
 
                 if (craftableCount == 0) return;

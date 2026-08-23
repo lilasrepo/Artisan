@@ -62,6 +62,10 @@ public unsafe class Artisan : IDalamudPlugin
 
         LuminaSheets.Init();
         P.Config = Configuration.Load();
+        // TODO(api13): NativeCraftAll (KamiToolKit) is Compile-Removed on TC, so the native Craft-X row can
+        // never render. Upstream's default UseNativeButtons=true then also suppresses the ImGui fallback in
+        // RecipeWindowUI.DrawEnduranceCounter -> the row disappeared entirely. Force the fallback on.
+        P.Config.UseNativeButtons = false;
         //P.Config.ScriptSolverConfig.Init();
 
         TM = new();
