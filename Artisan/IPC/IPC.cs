@@ -69,6 +69,7 @@ namespace Artisan.IPC
 
             Svc.PluginInterface.GetIpcProvider<Dictionary<int, string>>("Artisan.GetLists").RegisterFunc(GetLists);
             Svc.PluginInterface.GetIpcProvider<int, object>("Artisan.StartListById").RegisterAction(StartListById);
+            Svc.PluginInterface.GetIpcProvider<string, int, int>("Artisan.GetRelicToolListId").RegisterFunc(GetRelicToolListId);
 
             Svc.PluginInterface.GetIpcProvider<ushort, int, object>("Artisan.CraftItemWithSubcrafts").RegisterAction(CraftItemWithSubcrafts);
 
@@ -89,6 +90,8 @@ namespace Artisan.IPC
 
             Svc.PluginInterface.GetIpcProvider<uint, bool, object>("Artisan.ChangeStandardMinimumStepsBeforeMiracle").RegisterAction(ChangeStandardMinimumStepsBeforeMiracle);
             Svc.PluginInterface.GetIpcProvider<object>("Artisan.SetTempStandardMinimumStepsBeforeMiracleBackToNormal").RegisterAction(SetTempStandardMinimumStepsBeforeMiracleBackToNormal);
+
+            Svc.PluginInterface.GetIpcProvider<List<(string, int)>>("Artisan.ReturnMacroInfo").RegisterFunc(ReturnMacroInfo);
         }
 
         internal static void Dispose()
@@ -123,6 +126,7 @@ namespace Artisan.IPC
 
             Svc.PluginInterface.GetIpcProvider<Dictionary<int, string>>("Artisan.GetLists").UnregisterFunc();
             Svc.PluginInterface.GetIpcProvider<int, object>("Artisan.StartListById").UnregisterAction();
+            Svc.PluginInterface.GetIpcProvider<string, int, int>("Artisan.GetRelicToolListId").UnregisterFunc();
 
             Svc.PluginInterface.GetIpcProvider<ushort, int, object>("Artisan.CraftItemWithSubcrafts").UnregisterAction();
 
@@ -146,6 +150,8 @@ namespace Artisan.IPC
 
             Svc.PluginInterface.GetIpcProvider<uint, bool, object>("Artisan.ChangeStandardMinimumStepsBeforeMiracle").UnregisterAction();
             Svc.PluginInterface.GetIpcProvider<object>("Artisan.SetTempStandardMinimumStepsBeforeMiracleBackToNormal").UnregisterAction();
+
+            Svc.PluginInterface.GetIpcProvider<List<(string, uint)>>("Artisan.ReturnMacroInfo").UnregisterFunc();
         }
 
         static bool GetEnduranceStatus()
@@ -549,7 +555,21 @@ namespace Artisan.IPC
         /// </summary>
         public static Dictionary<int, string> GetLists()
         {
-            return P.Config.NewCraftingLists.ToDictionary(x => x.ID, x => x.Name ?? string.Empty);
+            Dictionary<int, string> dict = P.Config.NewCraftingLists.ToDictionary(x => x.ID, x => x.Name ?? string.Empty);
+            foreach (NewCraftingList premade in P.PremadeLists.PremadeCraftingLists)
+            {
+                dict.TryAdd(premade.ID, premade.Name ?? string.Empty);
+            }
+
+            return dict;
+        }
+
+        /// <summary>
+        /// Resolves a relic-tool premade list ID.
+        /// </summary>
+        public static int GetRelicToolListId(string stepName, int craftTypeSlot)
+        {
+            return RelicToolPremadeLists.TryGetListId(stepName, craftTypeSlot, out int listId) ? listId : 0;
         }
 
         /// <summary>
@@ -693,6 +713,24 @@ namespace Artisan.IPC
         {
             if (P.Config.TempMinimumStepsBeforeMiracle != null)
                 P.Config.TempMinimumStepsBeforeMiracle = null;
+        }
+
+        /// <summary>
+        /// Returns a list of all currently existing macro's, with the Id + Name attached to them. 
+        /// </summary>
+        /// <returns></returns>
+        public static List<(string, int)> ReturnMacroInfo()
+        {
+            List<(string, int)> macros = new();
+
+            var macroList = P.Config.MacroSolverConfig.Macros;
+            if (macroList.Count > 0)
+            {
+                foreach (var macro in macroList)
+                    macros.Add(new(macro.Name, macro.ID));
+            }
+
+            return macros;
         }
 
         public enum ArtisanMode

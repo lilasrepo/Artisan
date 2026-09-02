@@ -1,4 +1,3 @@
-﻿using Dalamud.Logging;
 using Dalamud.Plugin;
 using ECommons.DalamudServices;
 using Newtonsoft.Json;

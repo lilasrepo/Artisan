@@ -1,4 +1,4 @@
-﻿using Artisan.CraftingLists;
+using Artisan.CraftingLists;
 using Artisan.IPC;
 using Artisan.RawInformation;
 using Dalamud.Interface.Colors;
@@ -419,7 +419,7 @@ namespace Artisan.UI.Tables
                     using var smallBtnStyle = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(ImGui.GetStyle().FramePadding.X, 0));
                     if (ImGui.Button($"Fetch Prices"))
                     {
-                        P.UniversalsisClient.PlayerWorld = Svc.Objects.LocalPlayer?.CurrentWorld.RowId;
+                        P.UniversalsisClient.PlayerWorld = Svc.ClientState.LocalPlayer?.CurrentWorld.RowId;
                         if (P.Config.LimitUnversalisToDC)
                             Task.Run(() => P.UniversalsisClient.GetDCData(item.Data.RowId, ref item.MarketboardData));
                         else

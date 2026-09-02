@@ -140,7 +140,7 @@ namespace Artisan.Autocraft
         internal static bool RepairNPCNearby(out IGameObject? npc)
         {
             npc = null;
-            if (Svc.Objects.LocalPlayer != null)
+            if (Svc.ClientState.LocalPlayer != null)
             {
                 foreach (var obj in Svc.Objects.Where(x => x.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.EventNpc))
                 {
@@ -148,7 +148,7 @@ namespace Artisan.Autocraft
                     {
                         if (enpcsheet.ENpcData.Any(x => x.RowId == 720915))
                         {
-                            var npcDistance = Vector3.Distance(obj.Position, Svc.Objects.LocalPlayer.Position);
+                            var npcDistance = Vector3.Distance(obj.Position, Svc.ClientState.LocalPlayer.Position);
                             if (npcDistance > 7)
                                 continue;
 

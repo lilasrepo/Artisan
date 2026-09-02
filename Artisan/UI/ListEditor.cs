@@ -1,4 +1,4 @@
-﻿namespace Artisan.UI;
+namespace Artisan.UI;
 
 using Autocraft;
 using CraftingLists;
@@ -129,7 +129,7 @@ internal class ListEditor : Window, IDisposable
     {
         token = source.Token;
         Table = null;
-        P.UniversalsisClient.PlayerWorld = Svc.ClientState.IsLoggedIn ? Svc.Objects.LocalPlayer?.CurrentWorld.RowId : 0;
+        P.UniversalsisClient.PlayerWorld = Svc.ClientState.IsLoggedIn ? Svc.ClientState.LocalPlayer?.CurrentWorld.RowId : 0;
         if (RegenerateTask == null || RegenerateTask.IsCompleted)
         {
             Svc.Log.Debug($"Starting regeneration");

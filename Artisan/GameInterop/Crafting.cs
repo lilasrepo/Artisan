@@ -1,4 +1,4 @@
-﻿using Artisan.Autocraft;
+using Artisan.Autocraft;
 using Artisan.CraftingLogic;
 using Artisan.CraftingLogic.CraftData;
 using Artisan.CraftingLogic.Solvers;
@@ -715,7 +715,7 @@ public static unsafe class Crafting
     }
 
     // TODO(api13): IStatus is API15-only; TC_ok/_dalamud_api13's StatusList still yields Status.
-    private static Dalamud.Game.ClientState.Statuses.Status? GetStatus(uint statusID) => Svc.Objects.LocalPlayer?.StatusList.FirstOrDefault(s => s.StatusId == statusID);
+    private static Dalamud.Game.ClientState.Statuses.Status? GetStatus(uint statusID) => Svc.ClientState.LocalPlayer?.StatusList.FirstOrDefault(s => s.StatusId == statusID);
 
     private static void CraftingEventHandlerUpdateDetour(CraftingEventHandler* self, nint a2, nint a3, CraftingEventHandler.OperationId* payload)
     {

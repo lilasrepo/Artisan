@@ -1,6 +1,5 @@
-﻿using Dalamud.Game;
+using Dalamud.Game;
 using Dalamud.Game.Text.SeStringHandling;
-using Dalamud.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;

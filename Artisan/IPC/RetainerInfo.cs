@@ -1,4 +1,4 @@
-﻿using Artisan.CraftingLists;
+using Artisan.CraftingLists;
 using Artisan.RawInformation;
 using Artisan.Tasks;
 using Dalamud.Game.ClientState.Conditions;
@@ -245,9 +245,9 @@ namespace Artisan.IPC
                         ulong retainerId = 0;
                         var retainer = RetainerManager.Instance()->GetRetainerBySortedIndex((uint)i);
 
-                        if (P.Config.RetainerIDs.Count(x => x.Value == Svc.PlayerState.ContentId) > i)
+                        if (P.Config.RetainerIDs.Count(x => x.Value == Svc.ClientState.LocalContentId) > i)
                         {
-                            retainerId = P.Config.RetainerIDs.Where(x => x.Value == Svc.PlayerState.ContentId).Select(x => x.Key).ToArray()[i];
+                            retainerId = P.Config.RetainerIDs.Where(x => x.Value == Svc.ClientState.LocalContentId).Select(x => x.Key).ToArray()[i];
                         }
                         else
                         {
@@ -255,11 +255,11 @@ namespace Artisan.IPC
                                 retainerId = retainer->RetainerId;
                         }
 
-                        if (retainer->RetainerId > 0 && !P.Config.RetainerIDs.Any(x => x.Key == retainer->RetainerId && x.Value == Svc.PlayerState.ContentId))
+                        if (retainer->RetainerId > 0 && !P.Config.RetainerIDs.Any(x => x.Key == retainer->RetainerId && x.Value == Svc.ClientState.LocalContentId))
                         {
                             if (retainer->Available)
                             {
-                                P.Config.RetainerIDs.Add(retainer->RetainerId, Svc.PlayerState.ContentId);
+                                P.Config.RetainerIDs.Add(retainer->RetainerId, Svc.ClientState.LocalContentId);
                                 P.Config.Save();
                             }
                         }
@@ -552,7 +552,7 @@ namespace Artisan.IPC
             {
                 if ((x.ObjectKind == ObjectKind.EventObj) && x.Name.ToString().EqualsIgnoreCaseAny(BellName, "リテイナーベル"))
                 {
-                    if (Vector3.Distance(x.Position, Svc.Objects.LocalPlayer.Position) < GetValidInteractionDistance(x) && x.IsTargetable())
+                    if (Vector3.Distance(x.Position, Svc.ClientState.LocalPlayer.Position) < GetValidInteractionDistance(x) && x.IsTargetable())
                     {
                         return x;
                     }
